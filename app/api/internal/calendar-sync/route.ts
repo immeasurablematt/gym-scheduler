@@ -7,7 +7,15 @@ import { getCalendarSyncCronSecret } from "@/lib/google/config";
 
 export const runtime = "nodejs";
 
+export async function GET(request: Request) {
+  return handleCalendarSync(request);
+}
+
 export async function POST(request: Request) {
+  return handleCalendarSync(request);
+}
+
+async function handleCalendarSync(request: Request) {
   const secret = getCalendarSyncCronSecret();
 
   if (!secret) {

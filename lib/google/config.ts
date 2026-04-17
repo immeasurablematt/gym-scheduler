@@ -40,5 +40,9 @@ export function getGoogleCalendarConfig(): GoogleCalendarConfig {
 }
 
 export function getCalendarSyncCronSecret() {
-  return process.env.CALENDAR_SYNC_CRON_SECRET?.trim() || null;
+  return (
+    process.env.CALENDAR_SYNC_CRON_SECRET?.trim() ||
+    process.env.CRON_SECRET?.trim() ||
+    null
+  );
 }
