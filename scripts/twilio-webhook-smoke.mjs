@@ -23,7 +23,7 @@ if (missing.length > 0) {
 }
 
 const baseUrl = parseBaseUrl();
-const webhookUrl = new URL(process.env.TWILIO_WEBHOOK_URL.trim());
+const webhookUrl = parseWebhookUrl({ baseUrl });
 
 if (!webhookUrl.pathname.endsWith("/api/twilio/inbound")) {
   console.error(
@@ -38,15 +38,13 @@ await assertSignedWebhook(`${baseUrl}/api/twilio/inbound`, webhookUrl.toString()
 console.log("Twilio webhook smoke test passed.");
 
 function parseBaseUrl() {
-  const arg = process.argv.slice(2).find((value) => !value.startsWith("--"));
-  const flag = process.argv
-    .slice(2)
-    .find((value) => value.startsWith("--base-url="));
+  const arg = getPositionalBaseUrlArg();
+  const flag = getBaseUrlFlag();
   const webhookOrigin = process.env.TWILIO_WEBHOOK_URL
     ? new URL(process.env.TWILIO_WEBHOOK_URL).origin
     : null;
   const candidate =
-    flag?.slice("--base-url=".length) ||
+    flag ||
     arg ||
     process.env.TWILIO_SMOKE_BASE_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -54,6 +52,27 @@ function parseBaseUrl() {
     "http://localhost:3000";
 
   return new URL(candidate).toString().replace(/\/$/, "");
+}
+
+function parseWebhookUrl({ baseUrl }) {
+  const explicitBaseUrl = getBaseUrlFlag() || getPositionalBaseUrlArg();
+
+  if (explicitBaseUrl) {
+    return new URL("/api/twilio/inbound", `${baseUrl}/`);
+  }
+
+  return new URL(process.env.TWILIO_WEBHOOK_URL.trim());
+}
+
+function getBaseUrlFlag() {
+  return process.argv
+    .slice(2)
+    .find((value) => value.startsWith("--base-url="))
+    ?.slice("--base-url=".length);
+}
+
+function getPositionalBaseUrlArg() {
+  return process.argv.slice(2).find((value) => !value.startsWith("--"));
 }
 
 async function assertReachable(url) {
