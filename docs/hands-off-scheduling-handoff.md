@@ -121,7 +121,7 @@ These values are now required for Google Calendar sync:
 ```bash
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALENDAR_REDIRECT_URI=https://your-public-host.example.com/api/google/calendar/callback
+GOOGLE_CALENDAR_REDIRECT_URI=https://gym-scheduler-umber.vercel.app/api/google/calendar/callback
 CALENDAR_SYNC_CRON_SECRET=choose_a_long_random_secret
 ```
 
@@ -133,7 +133,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
 TWILIO_PHONE_NUMBER=...
-TWILIO_WEBHOOK_URL=https://your-public-host.example.com/api/twilio/inbound
+TWILIO_WEBHOOK_URL=https://gym-scheduler-umber.vercel.app/api/twilio/inbound
 ```
 
 Use a real long random string for `CALENDAR_SYNC_CRON_SECRET`.
@@ -156,7 +156,7 @@ What to create:
 6. Create or open an `OAuth 2.0 Client ID`.
 7. Add this exact authorized redirect URI:
 
-`https://your-public-host.example.com/api/google/calendar/callback`
+`https://gym-scheduler-umber.vercel.app/api/google/calendar/callback`
 
 That exact value must match `GOOGLE_CALENDAR_REDIRECT_URI`.
 
@@ -171,9 +171,9 @@ The current implementation expects the real public app URL for both integrations
 You need:
 
 - Twilio inbound webhook:
-  `https://your-public-host.example.com/api/twilio/inbound`
+  `https://gym-scheduler-umber.vercel.app/api/twilio/inbound`
 - Google OAuth callback:
-  `https://your-public-host.example.com/api/google/calendar/callback`
+  `https://gym-scheduler-umber.vercel.app/api/google/calendar/callback`
 
 If you are testing locally through a tunnel, use the tunnel URL consistently.
 
@@ -226,7 +226,7 @@ Minimal request shape:
 ```bash
 curl -X POST \
   -H "Authorization: Bearer YOUR_CALENDAR_SYNC_CRON_SECRET" \
-  "https://your-public-host.example.com/api/internal/calendar-sync"
+  "https://gym-scheduler-umber.vercel.app/api/internal/calendar-sync"
 ```
 
 When done, you can tell me:
@@ -237,7 +237,7 @@ When done, you can tell me:
 
 The Twilio number should still use:
 
-`https://your-public-host.example.com/api/twilio/inbound`
+`https://gym-scheduler-umber.vercel.app/api/twilio/inbound`
 
 And `TWILIO_WEBHOOK_URL` must match that same exact value.
 

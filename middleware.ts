@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { hasClerkServerKeys } from '@/lib/auth'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
@@ -28,33 +28,36 @@ const isWebhookRoute = createRouteMatcher([
   '/api/twilio/inbound',
 ])
 
-export default clerkMiddleware(async (auth, req) => {
+export default function middleware(request: NextRequest, event: NextFetchEvent) {
+  // Skip Clerk entirely when the app is running in preview/open-access mode.
   if (!hasClerkServerKeys) {
     return NextResponse.next()
   }
 
-  const { userId, sessionClaims } = await auth()
-  const onboardingComplete = Boolean(
-    (sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined)
-      ?.onboardingComplete
-  )
-  
-  if (!userId && (isProtectedRoute(req) || (isApiRoute(req) && !isWebhookRoute(req)))) {
-    const signInUrl = new URL('/sign-in', req.url)
-    signInUrl.searchParams.set('redirect_url', req.url)
-    return NextResponse.redirect(signInUrl)
-  }
+  return clerkMiddleware(async (auth, req) => {
+    const { userId, sessionClaims } = await auth()
+    const onboardingComplete = Boolean(
+      (sessionClaims?.metadata as { onboardingComplete?: boolean } | undefined)
+        ?.onboardingComplete
+    )
 
-  if (userId && !onboardingComplete) {
-    const onboardingUrl = new URL('/onboarding', req.url)
-    
-    if (!req.url.includes('/onboarding') && !isPublicRoute(req)) {
-      return NextResponse.redirect(onboardingUrl)
+    if (!userId && (isProtectedRoute(req) || (isApiRoute(req) && !isWebhookRoute(req)))) {
+      const signInUrl = new URL('/sign-in', req.url)
+      signInUrl.searchParams.set('redirect_url', req.url)
+      return NextResponse.redirect(signInUrl)
     }
-  }
 
-  return NextResponse.next()
-})
+    if (userId && !onboardingComplete) {
+      const onboardingUrl = new URL('/onboarding', req.url)
+
+      if (!req.url.includes('/onboarding') && !isPublicRoute(req)) {
+        return NextResponse.redirect(onboardingUrl)
+      }
+    }
+
+    return NextResponse.next()
+  })(request, event)
+}
 
 export const config = {
   matcher: [

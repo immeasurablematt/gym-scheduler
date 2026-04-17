@@ -45,7 +45,7 @@ These are the remaining steps the user has to do in Twilio by hand. The app does
 3. Configure the inbound message webhook on that number.
    - In Console, go to the Active Numbers page, open the number, scroll to the Messaging section, and set the incoming message handler to a webhook URL. Twilio’s help article is [How to Configure a Twilio Phone Number to Receive and Respond to Messages](https://help.twilio.com/articles/223136047).
    - Twilio’s general webhook behavior for inbound messages is documented in [Messaging Webhooks](https://www.twilio.com/docs/usage/webhooks/messaging-webhooks).
-   - Set the webhook URL to the exact public app URL ending in `/api/twilio/inbound`, for example `https://your-public-host.example.com/api/twilio/inbound`.
+   - Set the webhook URL to the exact public app URL ending in `/api/twilio/inbound`, for example `https://gym-scheduler-umber.vercel.app/api/twilio/inbound`.
    - Put the same exact URL into `TWILIO_WEBHOOK_URL`.
    - For local development, point both Twilio and `TWILIO_WEBHOOK_URL` at your HTTPS tunnel URL, not `localhost`.
 

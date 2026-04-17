@@ -41,9 +41,9 @@ GitHub main -> Vercel production deployment -> stable HTTPS hostname
 Set these in Vercel for the final production hostname:
 
 ```bash
-NEXT_PUBLIC_APP_URL=https://your-production-host.example.com
-TWILIO_WEBHOOK_URL=https://your-production-host.example.com/api/twilio/inbound
-GOOGLE_CALENDAR_REDIRECT_URI=https://your-production-host.example.com/api/google/calendar/callback
+NEXT_PUBLIC_APP_URL=https://gym-scheduler-umber.vercel.app
+TWILIO_WEBHOOK_URL=https://gym-scheduler-umber.vercel.app/api/twilio/inbound
+GOOGLE_CALENDAR_REDIRECT_URI=https://gym-scheduler-umber.vercel.app/api/google/calendar/callback
 CALENDAR_SYNC_CRON_SECRET=choose_a_long_random_secret
 ```
 
@@ -86,7 +86,7 @@ The request shape stays:
 ```bash
 curl -X POST \
   -H "Authorization: Bearer YOUR_CALENDAR_SYNC_CRON_SECRET" \
-  "https://your-production-host.example.com/api/internal/calendar-sync"
+  "https://gym-scheduler-umber.vercel.app/api/internal/calendar-sync"
 ```
 
 ## Exact manual setup steps
@@ -100,7 +100,7 @@ curl -X POST \
 5. Update Twilio to use the production `/api/twilio/inbound` URL.
 6. Update the Google OAuth client redirect URI to the production callback URL.
 7. Re-run the trainer Google Calendar connect flow on the production host.
-8. Run `node scripts/twilio-webhook-smoke.mjs --base-url=https://your-production-host.example.com`.
+8. Run `node scripts/twilio-webhook-smoke.mjs --base-url=https://gym-scheduler-umber.vercel.app`.
 9. Run the supervised pilot flow from the live runbook.
 
 ## Recommended immediate path
