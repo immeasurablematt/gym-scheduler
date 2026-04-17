@@ -6,7 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test scripts/*.test.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "bug-sweep": "node scripts/bug-sweep.mjs",
+    "bug-sweep:dry-run": "node scripts/bug-sweep.mjs --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
