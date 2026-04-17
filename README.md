@@ -1,36 +1,131 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GymScheduler - Personal Training Management System
 
-## Getting Started
+A comprehensive gym scheduling application for managing personal trainers and their clients, built with Next.js, Supabase, Clerk, and Stripe.
 
-First, run the development server:
+## Features
 
+- **Smart Scheduling**: AI-powered scheduling with conflict detection
+- **Multi-trainer Support**: Manage up to 4 trainers with 10 clients each
+- **Payment Processing**: Integrated Stripe payments
+- **3D Gym Visualization**: Interactive Three.js gym space view
+- **Real-time Updates**: Instant notifications for schedule changes
+- **Role-based Access**: Separate interfaces for trainers and clients
+
+## Tech Stack
+
+- **Framework**: Next.js 14 with App Router
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Clerk
+- **Payments**: Stripe
+- **Styling**: Tailwind CSS
+- **3D Graphics**: Three.js
+- **AI Integration**: Claude (Anthropic) & GPT-5 (OpenAI)
+- **Email**: Resend
+
+## Setup Instructions
+
+1. **Clone and install dependencies**:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd gym-scheduler
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. **Set up environment variables**:
+   - Copy `.env.local.example` to `.env.local`
+   - Fill in your API keys from:
+     - [Supabase](https://supabase.com)
+     - [Clerk](https://clerk.com)
+     - [Stripe](https://stripe.com)
+     - [Resend](https://resend.com)
+     - [Google Calendar](https://calendar.google.com)
+     - [Anthropic](https://anthropic.com)
+     - [OpenAI](https://openai.com)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. **Set up Supabase database**:
+   - Create a new Supabase project
+   - Run the SQL schema from `supabase/schema.sql`
+   - Update `.env.local` with your Supabase credentials
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. **Configure Clerk**:
+   - Create a Clerk application
+   - Set up sign-in/sign-up URLs in Clerk dashboard
+   - Add your Clerk keys to `.env.local`
 
-## Learn More
+5. **Run the development server**:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+gym-scheduler/
+├── app/                    # Next.js app router pages
+│   ├── dashboard/         # Protected dashboard routes
+│   ├── sign-in/          # Authentication pages
+│   └── api/              # API routes
+├── components/            # React components
+│   ├── ui/               # UI components
+│   ├── scheduling/       # Scheduling components
+│   └── dashboard/        # Dashboard components
+├── lib/                   # Utility functions and configs
+│   └── supabase/         # Supabase client
+├── types/                # TypeScript type definitions
+├── hooks/                # Custom React hooks
+└── supabase/            # Database schema and migrations
+```
 
-## Deploy on Vercel
+## Key Features Implementation Status
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- ✅ Next.js setup with TypeScript and Tailwind
+- ✅ Project structure and dependencies
+- ✅ Supabase database schema
+- ✅ Clerk authentication setup
+- ✅ Landing page with pricing
+- ✅ Dashboard layout and main page
+- ⏳ Scheduling system with conflict detection
+- ⏳ Session booking and management
+- ⏳ Stripe payment integration
+- ⏳ Email notifications with Resend
+- ⏳ 3D gym visualization
+- ⏳ AI scheduling optimization
+- ⏳ Client and trainer dashboards
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development Commands
+
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run start    # Start production server
+npm run lint     # Run ESLint
+```
+
+## SMS And Calendar Runtime
+
+- SMS automation enters at `POST /api/twilio/inbound`
+- Google Calendar OAuth starts at `GET /api/google/calendar/connect`
+- Session calendar retry processing runs through `POST /api/internal/calendar-sync`
+- `sessions` remains the booking source of truth
+- `trainer_calendar_connections` stores per-trainer Google OAuth and calendar metadata
+- `calendar_sync_jobs` stores retryable Google session sync work
+- `sms_conversations` stores lightweight pending SMS state for cancel/reschedule turns
+
+## Database Schema
+
+The application uses a PostgreSQL database (via Supabase) with the following main tables:
+- `users` - User authentication data
+- `trainers` - Trainer profiles and settings
+- `clients` - Client profiles and assignments
+- `sessions` - Training sessions and schedules
+- `trainer_calendar_connections` - Google Calendar OAuth and sync metadata
+- `calendar_sync_jobs` - queued session calendar sync retries
+- `sms_conversations` - lightweight pending SMS intent state
+- `payments` - Payment records
+- `gym_spaces` - Gym area management
+- `notifications_preferences` - User notification settings
+
+## License
+
+MIT

@@ -9,19 +9,44 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.60.0",
+    "@clerk/nextjs": "^6.31.3",
+    "@hookform/resolvers": "^5.2.1",
+    "@react-three/drei": "^10.7.3",
+    "@react-three/fiber": "^9.3.0",
+    "@stripe/stripe-js": "^7.8.0",
+    "@supabase/supabase-js": "^2.55.0",
+    "autoprefixer": "^10.4.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.540.0",
+    "next": "15.5.0",
+    "openai": "^5.13.1",
     "react": "19.1.0",
+    "react-calendar": "^6.0.0",
     "react-dom": "19.1.0",
-    "next": "15.5.0"
+    "react-hook-form": "^7.62.0",
+    "resend": "^6.0.1",
+    "shadcn-ui": "^0.9.5",
+    "stripe": "^18.4.0",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "three": "^0.179.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
+    "@types/three": "^0.179.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
-    "@eslint/eslintrc": "^3"
+    "prisma": "^6.14.0",
+    "supabase": "^2.92.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

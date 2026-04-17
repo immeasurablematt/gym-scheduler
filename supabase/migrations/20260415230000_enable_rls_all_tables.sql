@@ -1,0 +1,9 @@
+alter table raid_posts enable row level security;
+alter table engagement_logs enable row level security;
+alter table raid_timing_corrections enable row level security;
+alter table team_members enable row level security;
+alter table team_member_owner_aliases enable row level security;
+alter table monthly_summary_snapshots enable row level security;
+alter table monthly_score_snapshots enable row level security;
+alter table job_runs enable row level security;
+alter table ops_alert_publications enable row level security;
