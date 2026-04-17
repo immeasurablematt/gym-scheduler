@@ -2,6 +2,8 @@ import { format } from "date-fns";
 
 import { getSmsDashboardData } from "@/lib/sms/dashboard";
 
+export const dynamic = "force-dynamic";
+
 function StatCard({
   label,
   value,

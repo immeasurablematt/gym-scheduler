@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { hasClerkServerKeys } from "@/lib/auth";
 import { getGoogleCalendarConnectionStatus } from "@/lib/google-calendar";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   if (hasClerkServerKeys) {
     const { userId } = await auth();

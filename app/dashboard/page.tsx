@@ -6,6 +6,8 @@ import { getTrainerDashboardData } from "@/lib/sessions";
 import { format } from "date-fns";
 import { Calendar, Users, DollarSign, TrendingUp, Clock, AlertCircle } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   if (hasClerkServerKeys) {
     const { userId } = await auth();
