@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveSmsTimeZone } from "@/lib/sms/time-zone-config";
+
 export type SmsRuntimeConfig = {
   maxSlotsOffered: number;
   offerExpiryHours: number;
@@ -47,10 +49,7 @@ export function getSmsRuntimeConfig(): SmsRuntimeConfig {
       30,
       15,
     ),
-    timeZone:
-      process.env.SMS_TIME_ZONE?.trim() ||
-      process.env.TZ?.trim() ||
-      "America/Toronto",
+    timeZone: resolveSmsTimeZone(process.env.SMS_TIME_ZONE ?? process.env.TZ),
   };
 }
 
