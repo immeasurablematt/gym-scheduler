@@ -557,6 +557,8 @@ export type Database = {
         Row: {
           id: string
           provider: string
+          audience: 'client' | 'trainer'
+          message_kind: 'conversation' | 'book' | 'reschedule' | 'cancel'
           direction: 'inbound' | 'outbound'
           status: 'received' | 'queued' | 'sent' | 'delivered' | 'failed'
           message_sid: string | null
@@ -570,12 +572,15 @@ export type Database = {
           offer_set_id: string | null
           client_id: string | null
           trainer_id: string | null
+          source_change_id: string | null
           sent_at: string | null
           created_at: string
         }
         Insert: {
           id?: string
           provider?: string
+          audience?: 'client' | 'trainer'
+          message_kind?: 'conversation' | 'book' | 'reschedule' | 'cancel'
           direction: 'inbound' | 'outbound'
           status?: 'received' | 'queued' | 'sent' | 'delivered' | 'failed'
           message_sid?: string | null
@@ -589,12 +594,15 @@ export type Database = {
           offer_set_id?: string | null
           client_id?: string | null
           trainer_id?: string | null
+          source_change_id?: string | null
           sent_at?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           provider?: string
+          audience?: 'client' | 'trainer'
+          message_kind?: 'conversation' | 'book' | 'reschedule' | 'cancel'
           direction?: 'inbound' | 'outbound'
           status?: 'received' | 'queued' | 'sent' | 'delivered' | 'failed'
           message_sid?: string | null
@@ -608,6 +616,7 @@ export type Database = {
           offer_set_id?: string | null
           client_id?: string | null
           trainer_id?: string | null
+          source_change_id?: string | null
           sent_at?: string | null
           created_at?: string
         }
@@ -685,6 +694,8 @@ export type Database = {
       gym_area: 'weights' | 'cardio' | 'studio' | 'pool' | 'outdoor'
       sms_direction: 'inbound' | 'outbound'
       sms_message_status: 'received' | 'queued' | 'sent' | 'delivered' | 'failed'
+      sms_message_audience: 'client' | 'trainer'
+      sms_message_kind: 'conversation' | 'book' | 'reschedule' | 'cancel'
       sms_offer_status: 'pending' | 'booked' | 'expired' | 'conflicted'
       sms_webhook_status: 'received' | 'processed' | 'failed'
     }
