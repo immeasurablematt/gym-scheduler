@@ -116,7 +116,25 @@ If you want a stronger proof, create or keep one obvious Google Calendar event
 inside the weekday `09:00` to `17:00` window, then confirm that exact interval
 is omitted from the SMS options.
 
-### 4. Reschedule
+### 4. Verify free-text exact-time booking
+
+From the mapped client phone, send:
+
+```text
+Monday at 2
+```
+
+Expected result:
+
+- if the exact slot is open, the client receives `You're booked for ...`
+- a new `sessions` row is created for that exact requested time
+- `session_changes.reason = 'Booked via SMS'`
+- the session syncs to Google Calendar
+
+If that exact slot is not open in the current live window, the app should reply
+with up to 3 numbered alternatives instead of silently failing.
+
+### 5. Reschedule
 
 Send:
 
@@ -139,7 +157,7 @@ Expected result:
   - `reason = 'Rescheduled via SMS'`
 - the Google Calendar event moves to the new time
 
-### 5. Cancel
+### 6. Cancel
 
 Send:
 

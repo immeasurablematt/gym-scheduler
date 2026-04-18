@@ -7,7 +7,10 @@ This MVP keeps booking inside the current Next.js app and the current Supabase-b
 - Known existing clients only
 - Sender phone number must map to an existing client profile
 - Each client books only with their assigned trainer
-- SMS can request availability and book one of the latest offered slots
+- SMS can request availability, or text a specific requested time like `Monday at 2`
+- If that exact requested slot is available, the app auto-books it immediately
+- If that exact requested slot is unavailable, the app replies with up to 3 numbered alternatives
+- Explicit `Cancel` and `Reschedule` flows remain unchanged
 - Successful booking writes a real `sessions` row and `session_changes` row
 - Unknown senders and booking conflicts receive clean SMS responses
 - Inbound and outbound SMS are logged in Supabase
@@ -18,10 +21,11 @@ This MVP keeps booking inside the current Next.js app and the current Supabase-b
 1. Twilio posts an inbound SMS webhook to the app.
 2. The route verifies the `X-Twilio-Signature`, reserves the `MessageSid`, and returns an empty TwiML response immediately.
 3. After the response is flushed, the app logs the inbound message and resolves the sender phone number to a client and trainer.
-4. Availability requests generate up to three upcoming slots from the trainer's availability templates, minus blocked times and existing session conflicts.
-5. The app stores the offered slots as an offer set and sends a numbered SMS reply.
-6. A client reply of `1`, `2`, or `3` books only one of the latest active offered slots.
-7. Booking conflicts return a clean retry message instead of double-booking.
+4. Availability requests and exact free-text time requests generate slots from the trainer's availability templates, minus blocked times, existing session conflicts, and live Google Calendar busy time.
+5. If a free-text request matches an exact open slot, the app books it immediately and sends the normal booking confirmation SMS.
+6. If a free-text request does not match an exact open slot, the app stores up to three upcoming alternatives as an offer set and sends a numbered SMS reply.
+7. A client reply of `1`, `2`, or `3` books only one of the latest active offered slots.
+8. Booking conflicts return a clean retry message instead of double-booking.
 
 ### Twilio webhook readiness
 
@@ -111,6 +115,6 @@ If the signed `POST` returns `403`, the webhook URL or auth token does not match
 ### Behavior assumptions
 
 - Phone matching uses normalized E.164-style strings, with US/Canada 10-digit numbers normalized to `+1XXXXXXXXXX`
-- Booking confirmation is intentionally deterministic for MVP: clients book by replying with the number of a recent offered slot
+- Booking confirmation is intentionally deterministic for MVP: clients book by replying with the number of a recent offered slot, or by texting a specific exact time that the app can book immediately
 - Availability is sourced from `availability_templates`; if no active template exists, the app returns a setup-needed response instead of inventing hours
 - SMS-created sessions use the default session type and duration from app config and add `Booked via SMS.` to session notes

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  bookRequestedSmsTime,
   bookSmsOfferSelection,
   extractOfferSelection,
   offerAvailabilityBySms,
@@ -165,6 +166,36 @@ async function buildReply(
     return {
       body: outcome.replyBody,
       offerSetId: "offerSetId" in outcome ? outcome.offerSetId : null,
+    };
+  }
+
+  const requestedTimeOutcome = await bookRequestedSmsTime(
+    context.value,
+    body,
+    inboundMessageId,
+  );
+
+  if (requestedTimeOutcome.kind === "booked") {
+    return {
+      body: requestedTimeOutcome.replyBody,
+      offerSetId: null,
+    };
+  }
+
+  if (requestedTimeOutcome.kind === "offered_alternatives") {
+    return {
+      body: requestedTimeOutcome.replyBody,
+      offerSetId: requestedTimeOutcome.offerSetId,
+    };
+  }
+
+  if (
+    requestedTimeOutcome.kind === "invalid_requested_time" ||
+    requestedTimeOutcome.kind === "calendar_unavailable"
+  ) {
+    return {
+      body: requestedTimeOutcome.replyBody,
+      offerSetId: null,
     };
   }
 

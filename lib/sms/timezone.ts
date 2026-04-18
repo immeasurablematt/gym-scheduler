@@ -84,14 +84,18 @@ export function getPartsInTimeZone(date: Date, timeZone: string) {
   };
 }
 
-export function getCurrentPlainDateInTimeZone(timeZone: string): PlainDate {
-  const parts = getPartsInTimeZone(new Date(), timeZone);
+export function getPlainDateInTimeZone(date: Date, timeZone: string): PlainDate {
+  const parts = getPartsInTimeZone(date, timeZone);
 
   return {
     day: parts.day,
     month: parts.month,
     year: parts.year,
   };
+}
+
+export function getCurrentPlainDateInTimeZone(timeZone: string): PlainDate {
+  return getPlainDateInTimeZone(new Date(), timeZone);
 }
 
 export function addDaysToPlainDate(date: PlainDate, days: number): PlainDate {

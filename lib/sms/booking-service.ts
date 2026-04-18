@@ -4,12 +4,17 @@ import { TrainerCalendarUnavailableError } from "@/lib/google/client";
 import { syncSessionToCalendar } from "@/lib/google/calendar-sync";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  type AvailabilitySlot,
   findAvailableSmsSlots,
   hasAvailabilitySource,
 } from "@/lib/sms/availability-engine";
 import { getSmsRuntimeConfig } from "@/lib/sms/config";
 import { SmsKnownClientContext } from "@/lib/sms/client-directory";
 import { getFirstName } from "@/lib/sms/phone";
+import {
+  parseRequestedSmsTime,
+  type RequestedSmsTimeParseResult,
+} from "@/lib/sms/requested-time-parser";
 import {
   createSmsOfferSet,
   expirePendingOfferSets,
@@ -63,6 +68,13 @@ export type SmsOfferOutcome =
       kind: "calendar_unavailable";
       replyBody: string;
     };
+
+export type RequestedSmsTimeOutcome =
+  | { kind: "not_requested_time" }
+  | { kind: "invalid_requested_time"; replyBody: string }
+  | { kind: "booked"; replyBody: string; sessionId: string }
+  | { kind: "offered_alternatives"; offerSetId: string; replyBody: string }
+  | { kind: "calendar_unavailable"; replyBody: string };
 
 export async function offerAvailabilityBySms(
   context: SmsKnownClientContext,
@@ -131,6 +143,86 @@ export async function offerAvailabilityBySms(
     offerSetId: offerSet.offerSetId,
     replyBody: `Hey ${getFirstName(context.clientUser.full_name)}! I have:\n${replyLines.join("\n")}\nReply with 1, 2, or 3 and I'll lock it in.`,
   };
+}
+
+export async function bookRequestedSmsTime(
+  context: SmsKnownClientContext,
+  body: string,
+  inboundMessageId: string | null,
+): Promise<RequestedSmsTimeOutcome> {
+  const config = getSmsRuntimeConfig();
+  const parsed = parseRequestedSmsTime({
+    body,
+    now: new Date(),
+    slotIntervalMinutes: config.slotIntervalMinutes,
+    timeZone: config.timeZone,
+  });
+
+  if (parsed.kind === "not_requested_time") {
+    return parsed;
+  }
+
+  if (parsed.kind === "invalid_requested_time") {
+    return {
+      kind: "invalid_requested_time",
+      replyBody: buildInvalidRequestedTimeReply(parsed),
+    };
+  }
+
+  try {
+    const candidateSlots = await findAvailableSmsSlots({
+      clientId: context.client.id,
+      durationMinutes: config.sessionDurationMinutes,
+      maxSlots: config.maxSlotsOffered,
+      searchDays: config.searchDays,
+      searchStartAt: parsed.startsAt,
+      slotIntervalMinutes: config.slotIntervalMinutes,
+      timeZone: config.timeZone,
+      trainerAvailableHours: context.trainer.available_hours,
+      trainerId: context.trainer.id,
+    });
+
+    if (candidateSlots[0]?.startsAt === parsed.startsAt) {
+      await expirePendingOfferSets(context.client.id, context.trainer.id);
+
+      try {
+        const session = await createSmsBookedSession(context, parsed.startsAt);
+
+        return {
+          kind: "booked",
+          replyBody: `You're booked for ${formatSlotLabel(parsed.startsAt, config.timeZone)}. See you then.`,
+          sessionId: session.id,
+        };
+      } catch (error) {
+        if (isSessionConflictError(error)) {
+          return offerRequestedTimeAlternatives(
+            context,
+            parsed.startsAt,
+            inboundMessageId,
+          );
+        }
+
+        throw error;
+      }
+    }
+
+    return createRequestedTimeOfferOutcome(
+      context,
+      parsed.startsAt,
+      inboundMessageId,
+      candidateSlots,
+    );
+  } catch (error) {
+    if (error instanceof TrainerCalendarUnavailableError) {
+      return {
+        kind: "calendar_unavailable",
+        replyBody:
+          "I couldn't check your trainer's live calendar just now, so I didn't offer or book a time that might be wrong. Please try that request again in a moment.",
+      };
+    }
+
+    throw error;
+  }
 }
 
 export async function bookSmsOfferSelection(
@@ -222,6 +314,88 @@ export function extractOfferSelection(text: string) {
   }
 
   return null;
+}
+
+async function offerRequestedTimeAlternatives(
+  context: SmsKnownClientContext,
+  startsAt: string,
+  inboundMessageId: string | null,
+) {
+  const config = getSmsRuntimeConfig();
+  const slots = await findAvailableSmsSlots({
+    clientId: context.client.id,
+    durationMinutes: config.sessionDurationMinutes,
+    maxSlots: config.maxSlotsOffered,
+    searchDays: config.searchDays,
+    searchStartAt: startsAt,
+    slotIntervalMinutes: config.slotIntervalMinutes,
+    timeZone: config.timeZone,
+    trainerAvailableHours: context.trainer.available_hours,
+    trainerId: context.trainer.id,
+  });
+
+  return createRequestedTimeOfferOutcome(
+    context,
+    startsAt,
+    inboundMessageId,
+    slots,
+  );
+}
+
+async function createRequestedTimeOfferOutcome(
+  context: SmsKnownClientContext,
+  requestedStartsAt: string,
+  inboundMessageId: string | null,
+  slots: AvailabilitySlot[],
+): Promise<RequestedSmsTimeOutcome> {
+  const config = getSmsRuntimeConfig();
+
+  if (slots.length === 0) {
+    const hasAvailabilitySetup = await hasAvailabilitySource(
+      context.trainer.id,
+      context.trainer.available_hours,
+    );
+
+    return {
+      kind: "invalid_requested_time",
+      replyBody: hasAvailabilitySetup
+        ? `${formatSlotLabel(requestedStartsAt, config.timeZone)} isn't open, and I don't see another opening in the next ${config.searchDays} days right now. Text availability and I'll send a broader set of options.`
+        : `Hey ${getFirstName(context.clientUser.full_name)} - I found your profile, but your trainer's SMS availability isn't set up yet. Please contact the gym and we'll get that fixed.`,
+    };
+  }
+
+  await expirePendingOfferSets(context.client.id, context.trainer.id);
+
+  const expiresAt = new Date(
+    Date.now() + config.offerExpiryHours * 60 * 60 * 1000,
+  ).toISOString();
+  const offerSet = await createSmsOfferSet({
+    clientId: context.client.id,
+    expiresAt,
+    offeredByMessageId: inboundMessageId,
+    slots,
+    timeZone: config.timeZone,
+    trainerId: context.trainer.id,
+  });
+  const replyLines = slots.map(
+    (slot, index) => `${index + 1}) ${slot.label}`,
+  );
+
+  return {
+    kind: "offered_alternatives",
+    offerSetId: offerSet.offerSetId,
+    replyBody: `${formatSlotLabel(requestedStartsAt, config.timeZone)} isn't open, but I have:\n${replyLines.join("\n")}\nReply with 1, 2, or 3 and I'll lock it in.`,
+  };
+}
+
+function buildInvalidRequestedTimeReply(
+  parsed: Extract<RequestedSmsTimeParseResult, { kind: "invalid_requested_time" }>,
+) {
+  if (parsed.reason === "off_interval") {
+    return "I couldn't use that exact time. Text something like 'Monday 2 PM', 'tomorrow at 11 AM', or 'Apr 22 at 1:30 PM'.";
+  }
+
+  return "I couldn't tell whether you meant AM or PM. Text something like 'Monday 2 PM', 'tomorrow at 11 AM', or 'Apr 22 at 1:30 PM'.";
 }
 
 async function createSmsBookedSession(
