@@ -3,19 +3,29 @@ import "server-only";
 import { getTwilioSenderConfig } from "@/lib/sms/config";
 import { logSmsMessage } from "@/lib/sms/message-log";
 import { normalizePhoneNumber } from "@/lib/sms/phone";
+import type { Database } from "@/types/supabase";
+
+type SmsMessageAudience = Database["public"]["Enums"]["sms_message_audience"];
+type SmsMessageKind = Database["public"]["Enums"]["sms_message_kind"];
 
 type SendSmsInput = {
+  audience?: SmsMessageAudience;
   body: string;
   clientId?: string | null;
+  messageKind?: SmsMessageKind;
   offerSetId?: string | null;
+  sourceChangeId?: string | null;
   toPhone: string;
   trainerId?: string | null;
 };
 
 export async function sendTwilioSms({
+  audience = "client",
   body,
   clientId = null,
+  messageKind = "conversation",
   offerSetId = null,
+  sourceChangeId = null,
   toPhone,
   trainerId = null,
 }: SendSmsInput) {
@@ -63,15 +73,18 @@ export async function sendTwilioSms({
 
     await logSmsMessage({
       account_sid: config.accountSid,
+      audience,
       body,
       client_id: clientId,
       direction: "outbound",
       from_phone: config.fromPhone,
+      message_kind: messageKind,
       message_sid: responseBody?.sid ?? null,
       normalized_from_phone: normalizedFromPhone,
       normalized_to_phone: normalizedToPhone,
       offer_set_id: offerSetId,
       provider: "twilio",
+      source_change_id: sourceChangeId,
       sent_at: new Date().toISOString(),
       status,
       to_phone: toPhone,
@@ -82,15 +95,18 @@ export async function sendTwilioSms({
       error instanceof Error ? error.message : "Unexpected error sending SMS.";
 
     await logSmsMessage({
+      audience,
       body,
       client_id: clientId,
       direction: "outbound",
       error_message: errorMessage,
       from_phone: config.fromPhone,
+      message_kind: messageKind,
       normalized_from_phone: normalizedFromPhone,
       normalized_to_phone: normalizedToPhone,
       offer_set_id: offerSetId,
       provider: "twilio",
+      source_change_id: sourceChangeId,
       status: "failed",
       to_phone: toPhone,
       trainer_id: trainerId,
