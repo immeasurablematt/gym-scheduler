@@ -13,8 +13,12 @@ import {
 import { resolveSmsClientContextByPhone } from "@/lib/sms/client-directory";
 import { logSmsMessage } from "@/lib/sms/message-log";
 import { normalizePhoneNumber } from "@/lib/sms/phone";
-import { expireOfferSet } from "@/lib/sms/offer-service";
 import {
+  expireOfferSet,
+  getLatestPendingRescheduleOfferSet,
+} from "@/lib/sms/offer-service";
+import {
+  handleRequestedRescheduleTime,
   handleSmsCancelIntent,
   handleSmsRescheduleIntent,
   maybeHandleSessionSelectionReply,
@@ -97,7 +101,7 @@ export async function handleInboundTwilioWebhook(params: TwilioFormPostParams) {
   }
 }
 
-async function buildReply(
+export async function buildReply(
   body: string,
   context: Awaited<ReturnType<typeof resolveSmsClientContextByPhone>>,
   inboundMessageId: string,
@@ -117,12 +121,13 @@ async function buildReply(
   }
 
   const selection = extractOfferSelection(body);
-  const activeConversation = await getLatestActiveSmsConversation(
-    context.value.client.id,
-    context.value.trainer.id,
-  );
 
-  if (selection && activeConversation) {
+  if (selection) {
+    const activeConversation = await getLatestActiveSmsConversation(
+      context.value.client.id,
+      context.value.trainer.id,
+    );
+
     const reply = await maybeHandleSessionSelectionReply(
       context.value,
       selection,
@@ -158,6 +163,35 @@ async function buildReply(
       body: outcome.replyBody,
       offerSetId: null,
     };
+  }
+
+  const hasActiveRescheduleTarget = Boolean(
+    (
+      await getLatestPendingRescheduleOfferSet(
+        context.value.client.id,
+        context.value.trainer.id,
+      )
+    )?.[0]?.target_session_id,
+  );
+
+  if (looksLikeReschedule(body) || hasActiveRescheduleTarget) {
+    const requestedRescheduleOutcome = await handleRequestedRescheduleTime(
+      context.value,
+      {
+        body,
+        inboundMessageId,
+      },
+    );
+
+    if (requestedRescheduleOutcome.kind !== "not_requested_time") {
+      return {
+        body: requestedRescheduleOutcome.replyBody,
+        offerSetId:
+          "offerSetId" in requestedRescheduleOutcome
+            ? requestedRescheduleOutcome.offerSetId
+            : null,
+      };
+    }
   }
 
   if (looksLikeReschedule(body)) {
