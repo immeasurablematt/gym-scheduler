@@ -25,12 +25,22 @@ type SupportedPatternMatch =
   | null;
 
 const weekdayMap: Record<string, number> = {
+  fri: 5,
   friday: 5,
+  mon: 1,
   monday: 1,
+  sat: 6,
   saturday: 6,
+  sun: 0,
   sunday: 0,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
   thursday: 4,
+  tue: 2,
+  tues: 2,
   tuesday: 2,
+  wed: 3,
   wednesday: 3,
 };
 
@@ -62,6 +72,9 @@ const monthMap: Record<string, number> = {
 };
 
 const monthPattern = Object.keys(monthMap)
+  .sort((left, right) => right.length - left.length)
+  .join("|");
+const weekdayPattern = Object.keys(weekdayMap)
   .sort((left, right) => right.length - left.length)
   .join("|");
 const timePattern =
@@ -200,7 +213,7 @@ function tryParseWeekday(
 ): SupportedPatternMatch {
   const match = body.match(
     new RegExp(
-      `\\b(?<weekday>monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b(?:\\s+at)?\\s+${timePattern}\\b`,
+      `\\b(?<weekday>${weekdayPattern})\\b(?:\\s+at)?\\s+${timePattern}\\b`,
     ),
   );
 

@@ -16,6 +16,78 @@ test("parses weekday shorthand like monday at 2 as a requested time", async () =
   });
 });
 
+test("parses tues at 2pm as a requested time", async () => {
+  const { parseRequestedSmsTime } = await import("../lib/sms/requested-time-parser.ts");
+  const result = parseRequestedSmsTime({
+    body: "tues at 2pm",
+    now: new Date("2026-04-20T18:00:00.000Z"),
+    slotIntervalMinutes: 30,
+    timeZone: "America/Toronto",
+  });
+
+  assert.deepEqual(result, {
+    kind: "requested_time",
+    startsAt: "2026-04-21T18:00:00.000Z",
+  });
+});
+
+test("parses thurs 11am as a requested time", async () => {
+  const { parseRequestedSmsTime } = await import("../lib/sms/requested-time-parser.ts");
+  const result = parseRequestedSmsTime({
+    body: "thurs 11am",
+    now: new Date("2026-04-20T18:00:00.000Z"),
+    slotIntervalMinutes: 30,
+    timeZone: "America/Toronto",
+  });
+
+  assert.deepEqual(result, {
+    kind: "requested_time",
+    startsAt: "2026-04-23T15:00:00.000Z",
+  });
+});
+
+test("parses the approved weekday alias set", async () => {
+  const { parseRequestedSmsTime } = await import("../lib/sms/requested-time-parser.ts");
+  const cases = [
+    ["mon at 2pm", "2026-04-27T18:00:00.000Z"],
+    ["tue at 2pm", "2026-04-21T18:00:00.000Z"],
+    ["wed at 2pm", "2026-04-22T18:00:00.000Z"],
+    ["thu at 2pm", "2026-04-23T18:00:00.000Z"],
+    ["thur at 2pm", "2026-04-23T18:00:00.000Z"],
+    ["fri at 2pm", "2026-04-24T18:00:00.000Z"],
+    ["sat at 2pm", "2026-04-25T18:00:00.000Z"],
+    ["sun at 2pm", "2026-04-26T18:00:00.000Z"],
+  ];
+
+  for (const [body, startsAt] of cases) {
+    const result = parseRequestedSmsTime({
+      body,
+      now: new Date("2026-04-20T18:00:00.000Z"),
+      slotIntervalMinutes: 30,
+      timeZone: "America/Toronto",
+    });
+
+    assert.deepEqual(result, {
+      kind: "requested_time",
+      startsAt,
+    });
+  }
+});
+
+test("does not match weekday prefixes inside longer words", async () => {
+  const { parseRequestedSmsTime } = await import("../lib/sms/requested-time-parser.ts");
+  const result = parseRequestedSmsTime({
+    body: "thursdayish at 2pm",
+    now: new Date("2026-04-20T18:00:00.000Z"),
+    slotIntervalMinutes: 30,
+    timeZone: "America/Toronto",
+  });
+
+  assert.deepEqual(result, {
+    kind: "not_requested_time",
+  });
+});
+
 test("parses tomorrow with explicit am/pm", async () => {
   const { parseRequestedSmsTime } = await import("../lib/sms/requested-time-parser.ts");
   const result = parseRequestedSmsTime({
