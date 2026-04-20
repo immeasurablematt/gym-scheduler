@@ -4,6 +4,7 @@ import test from "node:test";
 const BOOKED_AT = "2026-04-21T13:00:00.000Z";
 const RESCHEDULED_FROM = "2026-04-21T13:00:00.000Z";
 const RESCHEDULED_TO = "2026-04-21T15:00:00.000Z";
+const REQUESTED_RESCHEDULE_AT = "2026-04-21T18:00:00.000Z";
 
 function createBookingSupabaseStub() {
   return {
@@ -60,9 +61,9 @@ function createRescheduleSupabaseStub() {
         sessionsCall += 1;
 
         if (sessionsCall === 1) {
-          return {
+          const query = {
             eq() {
-              return this;
+              return query;
             },
             maybeSingle: async () => ({
               data: createSessionRow({
@@ -72,17 +73,19 @@ function createRescheduleSupabaseStub() {
               error: null,
             }),
             neq() {
-              return this;
+              return query;
             },
             select() {
-              return this;
+              return query;
             },
           };
+
+          return query;
         }
 
-        return {
+        const query = {
           eq() {
-            return this;
+            return query;
           },
           maybeSingle: async () => ({
             data: createSessionRow({
@@ -92,12 +95,14 @@ function createRescheduleSupabaseStub() {
             error: null,
           }),
           select() {
-            return this;
+            return query;
           },
           update() {
-            return this;
+            return query;
           },
         };
+
+        return query;
       }
 
       if (table === "session_changes") {
@@ -195,14 +200,107 @@ function createCancelSupabaseStub() {
   };
 }
 
-function createSessionLifecycleSupabaseFactory() {
-  let clientCall = 0;
+function createExactTimeRescheduleSupabaseStub() {
+  let sessionsCall = 0;
 
-  return () => {
-    clientCall += 1;
-    return clientCall === 1
-      ? createRescheduleSupabaseStub()
-      : createCancelSupabaseStub();
+  return {
+    from(table: string) {
+      if (table === "sessions") {
+        sessionsCall += 1;
+
+        if (sessionsCall === 1) {
+          const query = {
+            eq() {
+              return query;
+            },
+            gte() {
+              return query;
+            },
+            limit: async () => ({
+              data: [
+                createSessionRow({
+                  id: "session-reschedule",
+                  scheduledAt: RESCHEDULED_FROM,
+                }),
+              ],
+              error: null,
+            }),
+            order() {
+              return query;
+            },
+            select() {
+              return query;
+            },
+          };
+
+          return query;
+        }
+
+        if (sessionsCall === 2) {
+          const query = {
+            eq() {
+              return query;
+            },
+            maybeSingle: async () => ({
+              data: createSessionRow({
+                id: "session-reschedule",
+                scheduledAt: RESCHEDULED_FROM,
+              }),
+              error: null,
+            }),
+            neq() {
+              return query;
+            },
+            select() {
+              return query;
+            },
+          };
+
+          return query;
+        }
+
+        const query = {
+          eq() {
+            return query;
+          },
+          maybeSingle: async () => ({
+            data: createSessionRow({
+              id: "session-reschedule",
+              scheduledAt: REQUESTED_RESCHEDULE_AT,
+            }),
+            error: null,
+          }),
+          select() {
+            return query;
+          },
+          update() {
+            return query;
+          },
+        };
+
+        return query;
+      }
+
+      if (table === "session_changes") {
+        return {
+          insert() {
+            return {
+              error: null,
+              select() {
+                return {
+                  single: async () => ({
+                    data: { id: "change-exact-reschedule" },
+                    error: null,
+                  }),
+                };
+              },
+            };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected table lookup: ${table}`);
+    },
   };
 }
 
@@ -373,7 +471,7 @@ test("bookRequestedSmsTime sends one trainer notification after a successful SMS
   });
 });
 
-test("session lifecycle hooks send one trainer notification for both SMS reschedule and SMS cancellation", async (t) => {
+test("session lifecycle hooks preserve single-send trainer notifications", async (t) => {
   const sendTrainerSessionNotification = t.mock.fn(
     async (input: unknown) => {
       void input;
@@ -381,6 +479,12 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
   );
   const syncSessionToCalendar = t.mock.fn(async () => undefined);
   const expirePendingOfferSets = t.mock.fn(async () => undefined);
+  let exactTimeSupabaseClient = createExactTimeRescheduleSupabaseStub();
+  let scenario:
+    | { kind: "exact-time" }
+    | { kind: "reschedule-and-cancel"; clientCall: number } = {
+    kind: "exact-time",
+  };
 
   await t.mock.module("server-only", {
     defaultExport: {},
@@ -397,7 +501,16 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
   });
   await t.mock.module("@/lib/supabase/server", {
     namedExports: {
-      createServerSupabaseClient: createSessionLifecycleSupabaseFactory(),
+      createServerSupabaseClient: () => {
+        if (scenario.kind === "exact-time") {
+          return exactTimeSupabaseClient;
+        }
+
+        scenario.clientCall += 1;
+        return scenario.clientCall === 1
+          ? createRescheduleSupabaseStub()
+          : createCancelSupabaseStub();
+      },
     },
   });
   await t.mock.module("@/lib/sms/conversation-service", {
@@ -408,7 +521,16 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
   });
   await t.mock.module("@/lib/sms/availability-engine", {
     namedExports: {
-      findAvailableSmsSlots: async () => [],
+      findAvailableSmsSlots: async () =>
+        scenario.kind === "exact-time"
+          ? [
+              {
+                endsAt: "2026-04-21T19:00:00.000Z",
+                label: "Tue, Apr 21, 2:00 PM",
+                startsAt: REQUESTED_RESCHEDULE_AT,
+              },
+            ]
+          : [],
       hasAvailabilitySource: async () => true,
     },
   });
@@ -428,7 +550,17 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
   await t.mock.module("@/lib/sms/offer-service", {
     namedExports: {
       createSmsOfferSet: async () => ({ offerSetId: "offer-1" }),
+      expireOfferSet: async () => undefined,
       expirePendingOfferSets,
+      getLatestPendingRescheduleOfferSet: async () => null,
+    },
+  });
+  await t.mock.module("@/lib/sms/requested-time-parser", {
+    namedExports: {
+      parseRequestedSmsTime: () => ({
+        kind: "requested_time",
+        startsAt: REQUESTED_RESCHEDULE_AT,
+      }),
     },
   });
   await t.mock.module("@/lib/sms/timezone", {
@@ -436,7 +568,9 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
       formatSlotLabel: (value: string) =>
         value === RESCHEDULED_FROM
           ? "Tue, Apr 21, 9:00 AM"
-          : "Tue, Apr 21, 11:00 AM",
+          : value === REQUESTED_RESCHEDULE_AT
+            ? "Tue, Apr 21, 2:00 PM"
+            : "Tue, Apr 21, 11:00 AM",
     },
   });
   await t.mock.module("@/lib/sms/trainer-notifications", {
@@ -445,44 +579,91 @@ test("session lifecycle hooks send one trainer notification for both SMS resched
     },
   });
 
-  const { cancelSessionBySms, rescheduleSessionFromOffer } = await importSessionLifecycle(
-    "reschedule",
+  const {
+    cancelSessionBySms,
+    handleRequestedRescheduleTime,
+    rescheduleSessionFromOffer,
+  } = await importSessionLifecycle(
+    "notification-hooks",
   );
 
-  await rescheduleSessionFromOffer(
-    createSmsContext(),
-    "session-reschedule",
-    RESCHEDULED_TO,
+  await t.test(
+    "handleRequestedRescheduleTime sends one trainer notification for a successful exact-time reschedule",
+    async () => {
+      scenario = { kind: "exact-time" };
+      exactTimeSupabaseClient = createExactTimeRescheduleSupabaseStub();
+      sendTrainerSessionNotification.mock.resetCalls();
+      syncSessionToCalendar.mock.resetCalls();
+
+      const result = await handleRequestedRescheduleTime(
+        createSmsContext(),
+        {
+          body: "tomorrow at 2pm",
+          inboundMessageId: "inbound-5",
+        },
+      );
+
+      assert.equal(result.kind, "rescheduled");
+      assert.equal(sendTrainerSessionNotification.mock.calls.length, 1);
+      const [notificationCall] = sendTrainerSessionNotification.mock.calls;
+      assert.ok(notificationCall);
+      assert.deepEqual(notificationCall.arguments[0], {
+        clientId: "client-1",
+        clientName: "Alex Client",
+        kind: "reschedule",
+        newSlotLabel: "Tue, Apr 21, 2:00 PM",
+        oldSlotLabel: "Tue, Apr 21, 9:00 AM",
+        sourceChangeId: "change-exact-reschedule",
+        trainerId: "trainer-1",
+      });
+      assert.equal(syncSessionToCalendar.mock.calls.length, 1);
+    },
   );
 
-  const session = createSessionRow({
-    id: "session-cancel",
-    scheduledAt: BOOKED_AT,
-  });
-  await cancelSessionBySms(createSmsContext(), session, "inbound-1");
+  await t.test(
+    "rescheduleSessionFromOffer and cancelSessionBySms each send one trainer notification",
+    async () => {
+      scenario = { kind: "reschedule-and-cancel", clientCall: 0 };
+      expirePendingOfferSets.mock.resetCalls();
+      sendTrainerSessionNotification.mock.resetCalls();
+      syncSessionToCalendar.mock.resetCalls();
 
-  assert.equal(expirePendingOfferSets.mock.calls.length, 1);
-  assert.equal(sendTrainerSessionNotification.mock.calls.length, 2);
-  const [rescheduleNotificationCall, cancelNotificationCall] =
-    sendTrainerSessionNotification.mock.calls;
-  assert.ok(rescheduleNotificationCall);
-  assert.deepEqual(rescheduleNotificationCall.arguments[0], {
-    clientId: "client-1",
-    clientName: "Alex Client",
-    kind: "reschedule",
-    newSlotLabel: "Tue, Apr 21, 11:00 AM",
-    oldSlotLabel: "Tue, Apr 21, 9:00 AM",
-    sourceChangeId: "change-reschedule",
-    trainerId: "trainer-1",
-  });
-  assert.ok(cancelNotificationCall);
-  assert.deepEqual(cancelNotificationCall.arguments[0], {
-    clientId: "client-1",
-    clientName: "Alex Client",
-    kind: "cancel",
-    slotLabel: "Tue, Apr 21, 9:00 AM",
-    sourceChangeId: "change-cancel",
-    trainerId: "trainer-1",
-  });
-  assert.equal(syncSessionToCalendar.mock.calls.length, 2);
+      await rescheduleSessionFromOffer(
+        createSmsContext(),
+        "session-reschedule",
+        RESCHEDULED_TO,
+      );
+
+      const session = createSessionRow({
+        id: "session-cancel",
+        scheduledAt: BOOKED_AT,
+      });
+      await cancelSessionBySms(createSmsContext(), session, "inbound-1");
+
+      assert.equal(expirePendingOfferSets.mock.calls.length, 1);
+      assert.equal(sendTrainerSessionNotification.mock.calls.length, 2);
+      const [rescheduleNotificationCall, cancelNotificationCall] =
+        sendTrainerSessionNotification.mock.calls;
+      assert.ok(rescheduleNotificationCall);
+      assert.deepEqual(rescheduleNotificationCall.arguments[0], {
+        clientId: "client-1",
+        clientName: "Alex Client",
+        kind: "reschedule",
+        newSlotLabel: "Tue, Apr 21, 11:00 AM",
+        oldSlotLabel: "Tue, Apr 21, 9:00 AM",
+        sourceChangeId: "change-reschedule",
+        trainerId: "trainer-1",
+      });
+      assert.ok(cancelNotificationCall);
+      assert.deepEqual(cancelNotificationCall.arguments[0], {
+        clientId: "client-1",
+        clientName: "Alex Client",
+        kind: "cancel",
+        slotLabel: "Tue, Apr 21, 9:00 AM",
+        sourceChangeId: "change-cancel",
+        trainerId: "trainer-1",
+      });
+      assert.equal(syncSessionToCalendar.mock.calls.length, 2);
+    },
+  );
 });

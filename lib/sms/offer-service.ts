@@ -93,14 +93,35 @@ export async function getLatestPendingOfferSet(
   clientId: string,
   trainerId: string,
 ) {
+  return getLatestPendingOfferSetByFlowType(clientId, trainerId);
+}
+
+export async function getLatestPendingRescheduleOfferSet(
+  clientId: string,
+  trainerId: string,
+) {
+  return getLatestPendingOfferSetByFlowType(clientId, trainerId, "reschedule");
+}
+
+async function getLatestPendingOfferSetByFlowType(
+  clientId: string,
+  trainerId: string,
+  flowType?: "booking" | "reschedule",
+) {
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("sms_booking_offers")
     .select("*")
     .eq("client_id", clientId)
     .eq("trainer_id", trainerId)
     .eq("status", "pending")
-    .gt("expires_at", new Date().toISOString())
+    .gt("expires_at", new Date().toISOString());
+
+  if (flowType) {
+    query = query.eq("flow_type", flowType);
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(12);
 

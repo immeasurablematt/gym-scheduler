@@ -18,8 +18,14 @@ import { getSmsRuntimeConfig } from "@/lib/sms/config";
 import type { SmsKnownClientContext } from "@/lib/sms/client-directory";
 import {
   createSmsOfferSet,
+  expireOfferSet,
   expirePendingOfferSets,
+  getLatestPendingRescheduleOfferSet,
 } from "@/lib/sms/offer-service";
+import {
+  parseRequestedSmsTime,
+  type RequestedSmsTimeParseResult,
+} from "@/lib/sms/requested-time-parser";
 import { sendTrainerSessionNotification } from "@/lib/sms/trainer-notifications";
 import { formatSlotLabel } from "@/lib/sms/timezone";
 import type { Database, Json } from "@/types/supabase";
@@ -30,6 +36,25 @@ type SessionSelectionOption = {
   selection: number;
   sessionId: string;
 };
+type RequestedSmsRescheduleOutcome =
+  | { kind: "not_requested_time" }
+  | { kind: "already_scheduled"; replyBody: string; sessionId: string }
+  | { kind: "invalid_requested_time"; replyBody: string }
+  | { kind: "rescheduled"; replyBody: string; sessionId: string }
+  | { kind: "retry_reschedule"; replyBody: string }
+  | { kind: "offered_alternatives"; offerSetId: string; replyBody: string }
+  | { kind: "calendar_unavailable"; replyBody: string }
+  | { kind: "choose_session"; replyBody: string }
+  | { kind: "no_availability"; replyBody: string }
+  | { kind: "no_session"; replyBody: string }
+  | { kind: "setup_needed"; replyBody: string };
+
+type RescheduleTargetResolution =
+  | { kind: "resolved"; session: SessionRow; offerSetId: string | null }
+  | Extract<
+      RequestedSmsRescheduleOutcome,
+      { kind: "choose_session" | "no_session" }
+    >;
 
 export async function maybeHandleSessionSelectionReply(
   context: SmsKnownClientContext,
@@ -178,6 +203,129 @@ export async function handleSmsRescheduleIntent(
   };
 }
 
+export async function handleRequestedRescheduleTime(
+  context: SmsKnownClientContext,
+  input: {
+    body: string;
+    inboundMessageId: string | null;
+  },
+): Promise<RequestedSmsRescheduleOutcome> {
+  const config = getSmsRuntimeConfig();
+  const parsed = parseRequestedSmsTime({
+    body: input.body,
+    now: new Date(),
+    slotIntervalMinutes: config.slotIntervalMinutes,
+    timeZone: config.timeZone,
+  });
+
+  if (parsed.kind === "not_requested_time") {
+    return parsed;
+  }
+
+  if (parsed.kind === "invalid_requested_time") {
+    return {
+      kind: "invalid_requested_time",
+      replyBody: buildInvalidRequestedRescheduleTimeReply(parsed),
+    };
+  }
+
+  const target = await resolveRequestedRescheduleTargetSession(
+    context,
+    input.inboundMessageId,
+  );
+
+  if (target.kind !== "resolved") {
+    return target;
+  }
+
+  if (parsed.startsAt === target.session.scheduled_at) {
+    return {
+      kind: "already_scheduled",
+      replyBody: `Your session is already set for ${formatSlotLabel(target.session.scheduled_at, config.timeZone)}.`,
+      sessionId: target.session.id,
+    };
+  }
+
+  try {
+    const slots = (
+      await findAvailableSmsSlots({
+        clientId: context.client.id,
+        durationMinutes: target.session.duration_minutes,
+        ignoredSessionIds: [target.session.id],
+        maxSlots: config.maxSlotsOffered,
+        searchDays: config.searchDays,
+        searchStartAt: parsed.startsAt,
+        slotIntervalMinutes: config.slotIntervalMinutes,
+        timeZone: config.timeZone,
+        trainerAvailableHours: context.trainer.available_hours,
+        trainerId: context.trainer.id,
+      })
+    ).filter((slot) => slot.startsAt !== target.session.scheduled_at);
+
+    if (slots.some((slot) => slot.startsAt === parsed.startsAt)) {
+      let replacedOfferSetId = target.offerSetId;
+
+      if (replacedOfferSetId) {
+        try {
+          await expireOfferSet(replacedOfferSetId);
+          replacedOfferSetId = null;
+        } catch {
+          return {
+            kind: "retry_reschedule",
+            replyBody:
+              "I couldn't update your last reschedule request just now, so I didn't move the session. Please text reschedule again in a moment.",
+          };
+        }
+      }
+
+      try {
+        const session = await rescheduleSessionFromOffer(
+          context,
+          target.session.id,
+          parsed.startsAt,
+        );
+
+        return {
+          kind: "rescheduled",
+          replyBody: `Your session is moved to ${formatSlotLabel(parsed.startsAt, config.timeZone)}.`,
+          sessionId: session.id,
+        };
+      } catch (error) {
+        if (isSessionConflictError(error)) {
+          return offerRequestedRescheduleAlternatives(
+            context,
+            target.session,
+            parsed.startsAt,
+            input.inboundMessageId,
+            replacedOfferSetId,
+          );
+        }
+
+        throw error;
+      }
+    }
+
+    return createRequestedRescheduleOfferOutcome(
+      context,
+      target.session,
+      parsed.startsAt,
+      input.inboundMessageId,
+      target.offerSetId,
+      slots,
+    );
+  } catch (error) {
+    if (error instanceof TrainerCalendarUnavailableError) {
+      return {
+        kind: "calendar_unavailable",
+        replyBody:
+          "I couldn't check your trainer's live calendar just now, so I didn't move the session to a time that might be wrong. Please text reschedule again in a moment.",
+      };
+    }
+
+    throw error;
+  }
+}
+
 export async function rescheduleSessionFromOffer(
   context: SmsKnownClientContext,
   sessionId: string,
@@ -271,6 +419,7 @@ async function createSessionChoicePrompt(
   inboundMessageId: string | null,
   sessions: SessionRow[],
   intent: "cancel" | "reschedule",
+  introOverride?: string,
 ) {
   const config = getSmsRuntimeConfig();
   const options = sessions.map((session, index) => ({
@@ -295,6 +444,10 @@ async function createSessionChoicePrompt(
   });
 
   const lines = options.map((option) => `${option.selection}) ${option.label}`);
+
+  if (introOverride) {
+    return `${introOverride}\n${lines.join("\n")}`;
+  }
 
   return intent === "cancel"
     ? `I found multiple upcoming sessions. Reply with the one to cancel:\n${lines.join("\n")}`
@@ -371,6 +524,224 @@ async function offerRescheduleSlotsForSession(
     offerSetId: offerSet.offerSetId,
     replyBody: `Your current session is ${formatSlotLabel(session.scheduled_at, config.timeZone)}. I can move you to:\n${lines.join("\n")}\nReply with 1, 2, or 3 and I'll update it.`,
   };
+}
+
+async function resolveRequestedRescheduleTargetSession(
+  context: SmsKnownClientContext,
+  inboundMessageId: string | null,
+): Promise<RescheduleTargetResolution> {
+  const activeOfferSet = await getLatestPendingRescheduleOfferSet(
+    context.client.id,
+    context.trainer.id,
+  );
+  const activeTarget = extractPendingRescheduleTarget(activeOfferSet);
+
+  if (activeTarget) {
+    const session = await loadUpcomingSessionForClient(
+      context.client.id,
+      context.trainer.id,
+      activeTarget.targetSessionId,
+    );
+
+    if (session) {
+      return {
+        kind: "resolved",
+        offerSetId: activeTarget.offerSetId,
+        session,
+      };
+    }
+
+    const sessions = await listUpcomingSessionsForClient(
+      context.client.id,
+      context.trainer.id,
+    );
+
+    if (sessions.length === 0) {
+      return {
+        kind: "no_session",
+        replyBody:
+          "I don't see an upcoming session to move right now. Text availability if you want a fresh booking.",
+      };
+    }
+
+    return {
+      kind: "choose_session",
+      replyBody: await createSessionChoicePrompt(
+        context,
+        inboundMessageId,
+        sessions.slice(0, 3),
+        "reschedule",
+        "I couldn't match the session from your last reschedule request. Reply with the one to move:",
+      ),
+    };
+  }
+
+  const sessions = await listUpcomingSessionsForClient(
+    context.client.id,
+    context.trainer.id,
+  );
+
+  if (sessions.length === 0) {
+    return {
+      kind: "no_session",
+      replyBody:
+        "I don't see an upcoming session to move right now. Text availability if you want a fresh booking.",
+    };
+  }
+
+  if (sessions.length === 1) {
+    return {
+      kind: "resolved",
+      offerSetId: null,
+      session: sessions[0],
+    };
+  }
+
+  return {
+    kind: "choose_session",
+    replyBody: await createSessionChoicePrompt(
+      context,
+      inboundMessageId,
+      sessions.slice(0, 3),
+      "reschedule",
+    ),
+  };
+}
+
+function extractPendingRescheduleTarget(
+  offers: Awaited<ReturnType<typeof getLatestPendingRescheduleOfferSet>>,
+) {
+  if (!offers || offers.length === 0) {
+    return null;
+  }
+
+  const offerSetId = offers[0]?.offer_set_id ?? null;
+  const targetSessionId = offers[0]?.target_session_id;
+
+  if (
+    !offerSetId ||
+    !targetSessionId ||
+    !offers.every(
+      (offer) =>
+        offer.flow_type === "reschedule" &&
+        offer.offer_set_id === offerSetId &&
+        offer.target_session_id === targetSessionId,
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    offerSetId,
+    targetSessionId,
+  };
+}
+
+async function offerRequestedRescheduleAlternatives(
+  context: SmsKnownClientContext,
+  session: SessionRow,
+  requestedStartsAt: string,
+  inboundMessageId: string | null,
+  replacedOfferSetId: string | null,
+) {
+  const config = getSmsRuntimeConfig();
+  const slots = (
+    await findAvailableSmsSlots({
+      clientId: context.client.id,
+      durationMinutes: session.duration_minutes,
+      ignoredSessionIds: [session.id],
+      maxSlots: config.maxSlotsOffered,
+      searchDays: config.searchDays,
+      searchStartAt: requestedStartsAt,
+      slotIntervalMinutes: config.slotIntervalMinutes,
+      timeZone: config.timeZone,
+      trainerAvailableHours: context.trainer.available_hours,
+      trainerId: context.trainer.id,
+    })
+  ).filter(
+    (slot) =>
+      slot.startsAt !== requestedStartsAt &&
+      slot.startsAt !== session.scheduled_at,
+  );
+
+  return createRequestedRescheduleOfferOutcome(
+    context,
+    session,
+    requestedStartsAt,
+    inboundMessageId,
+    replacedOfferSetId,
+    slots,
+  );
+}
+
+async function createRequestedRescheduleOfferOutcome(
+  context: SmsKnownClientContext,
+  session: SessionRow,
+  requestedStartsAt: string,
+  inboundMessageId: string | null,
+  replacedOfferSetId: string | null,
+  slots: {
+    endsAt: string;
+    label: string;
+    startsAt: string;
+  }[],
+): Promise<
+  Extract<
+    RequestedSmsRescheduleOutcome,
+    { kind: "offered_alternatives" | "no_availability" | "setup_needed" }
+  >
+> {
+  const config = getSmsRuntimeConfig();
+
+  if (slots.length === 0) {
+    const hasAvailabilitySetup = await hasAvailabilitySource(
+      context.trainer.id,
+      context.trainer.available_hours,
+    );
+
+    return {
+      kind: hasAvailabilitySetup ? "no_availability" : "setup_needed",
+      replyBody: hasAvailabilitySetup
+        ? `${formatSlotLabel(requestedStartsAt, config.timeZone)} isn't open, and I don't see another opening in the next ${config.searchDays} days right now. Keep your current session for ${formatSlotLabel(session.scheduled_at, config.timeZone)} or text reschedule again later.`
+        : `I found your session, but your trainer's live availability isn't set up yet. Please contact the gym and we'll get that fixed.`,
+    };
+  }
+
+  const expiresAt = new Date(
+    Date.now() + config.offerExpiryHours * 60 * 60 * 1000,
+  ).toISOString();
+  const offerSet = await createSmsOfferSet({
+    clientId: context.client.id,
+    expiresAt,
+    flowType: "reschedule",
+    offeredByMessageId: inboundMessageId,
+    slots,
+    targetSessionId: session.id,
+    timeZone: config.timeZone,
+    trainerId: context.trainer.id,
+  });
+
+  if (replacedOfferSetId) {
+    await expireOfferSet(replacedOfferSetId);
+  }
+
+  const lines = slots.map((slot, index) => `${index + 1}) ${slot.label}`);
+
+  return {
+    kind: "offered_alternatives",
+    offerSetId: offerSet.offerSetId,
+    replyBody: `${formatSlotLabel(requestedStartsAt, config.timeZone)} isn't open, but I can move you to:\n${lines.join("\n")}\nReply with 1, 2, or 3 and I'll update it.`,
+  };
+}
+
+function buildInvalidRequestedRescheduleTimeReply(
+  parsed: Extract<RequestedSmsTimeParseResult, { kind: "invalid_requested_time" }>,
+) {
+  if (parsed.reason === "off_interval") {
+    return "I couldn't use that exact time to move your session. Text something like 'Monday 2 PM', 'tomorrow at 11 AM', or 'Apr 22 at 1:30 PM'.";
+  }
+
+  return "I couldn't tell whether you meant AM or PM to move your session. Text something like 'Monday 2 PM', 'tomorrow at 11 AM', or 'Apr 22 at 1:30 PM'.";
 }
 
 export async function cancelSessionBySms(
