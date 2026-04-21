@@ -1,6 +1,9 @@
 ## SMS Scheduling MVP
 
 This MVP keeps booking inside the current Next.js app and the current Supabase-backed scheduling model.
+Google Calendar sync now creates real client attendee invites for connected
+trainers. Dashboard and SMS session changes both use the same attendee-aware
+calendar sync path.
 
 ### In scope
 
@@ -12,6 +15,7 @@ This MVP keeps booking inside the current Next.js app and the current Supabase-b
 - If that exact requested slot is unavailable, the app replies with up to 3 numbered alternatives
 - Explicit `Cancel` and `Reschedule` flows remain unchanged
 - Successful booking writes a real `sessions` row and `session_changes` row
+- Booking, reschedule, and cancel syncs include the client as a Google Calendar attendee when the trainer has a connected calendar
 - Unknown senders and booking conflicts receive clean SMS responses
 - Inbound and outbound SMS are logged in Supabase
 - Twilio webhooks are signature-verified, ACKed immediately, and deduplicated by `MessageSid`

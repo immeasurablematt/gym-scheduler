@@ -98,6 +98,8 @@ Expected result:
   - `change_type = 'created'`
   - `reason = 'Booked via SMS'`
 - the session appears on the trainer Google Calendar
+- the trainer Google Calendar event includes the client as an attendee
+- the client receives the Google invite email
 
 ### 3. Verify busy-time exclusion
 
@@ -155,7 +157,8 @@ Expected result:
 - a `session_changes` row is created with:
   - `change_type = 'rescheduled'`
   - `reason = 'Rescheduled via SMS'`
-- the Google Calendar event moves to the new time
+- the existing Google event is updated in place
+- the client receives the Google update email
 
 ### 6. Cancel
 
@@ -174,7 +177,8 @@ Expected result:
 - the target `sessions` row is updated to:
   - `status = 'cancelled'`
   - `calendar_sync_status = 'synced'`
-- the session's Google Calendar event is removed
+- the Google event is removed
+- the client receives the Google cancellation email
 - a `session_changes` row is created with:
   - `change_type = 'cancelled'`
   - `reason = 'Cancelled via SMS'`
