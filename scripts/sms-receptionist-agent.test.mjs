@@ -94,6 +94,47 @@ test("runReceptionistAgent strips unsafe action fields on the normal provider pa
   assert.ok(!("requested_trainer_id" in result.resolved_fields));
 });
 
+test("runReceptionistAgent falls back when the provider returns an empty object", async () => {
+  const result = await runReceptionistAgent(createInput(), async () => ({}));
+
+  assert.deepEqual(result, {
+    resolved_fields: {},
+    follow_up_question: "What is the best email address to reach you at?",
+    summary_text: "Collected: trainer Maya, client name Alex Client, preferences weekday evenings after 6pm.",
+    preference_summary: "weekday evenings after 6pm",
+    preference_json: {},
+    needs_follow_up: true,
+    confidence_flags: ["fallback:empty-provider-output"],
+  });
+});
+
+test("runReceptionistAgent falls back when blank provider fields sanitize away", async () => {
+  const result = await runReceptionistAgent(createInput(), async () => ({
+    resolved_fields: {
+      client_name: " ",
+      email: "",
+      requested_trainer_name_raw: " ",
+      scheduling_preferences_text: " ",
+    },
+    follow_up_question: " ",
+    summary_text: "",
+    preference_summary: " ",
+    preference_json: {},
+    needs_follow_up: true,
+    confidence_score: 0.95,
+  }));
+
+  assert.deepEqual(result, {
+    resolved_fields: {},
+    follow_up_question: "What is the best email address to reach you at?",
+    summary_text: "Collected: trainer Maya, client name Alex Client, preferences weekday evenings after 6pm.",
+    preference_summary: "weekday evenings after 6pm",
+    preference_json: {},
+    needs_follow_up: true,
+    confidence_flags: ["fallback:empty-provider-output"],
+  });
+});
+
 test("runReceptionistAgent falls back deterministically when no runner is available", async () => {
   const result = await runReceptionistAgent(createInput(), null);
 

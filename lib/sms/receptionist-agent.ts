@@ -91,21 +91,24 @@ function sanitizeReceptionistOutput(
   input: ReceptionistAgentInput,
   rawOutput: ReceptionistAgentRunnerOutput | null | undefined,
 ): ReceptionistAgentOutput {
+  const fallbackOutput = createFallbackReceptionistOutput(
+    input,
+    "fallback:empty-provider-output",
+  );
   const resolvedFields = sanitizeResolvedFields(rawOutput?.resolved_fields);
-
-  return {
+  const sanitizedOutput: ReceptionistAgentOutput = {
     resolved_fields: resolvedFields,
     follow_up_question: sanitizeString(
       rawOutput?.follow_up_question,
-      getFallbackQuestion(input.next_missing_field),
+      fallbackOutput.follow_up_question,
     ),
     summary_text: sanitizeString(
       rawOutput?.summary_text,
-      buildFallbackSummary(input.lead_snapshot),
+      fallbackOutput.summary_text,
     ),
     preference_summary: sanitizeString(
       rawOutput?.preference_summary,
-      getPreferenceSummary(input.lead_snapshot.scheduling_preferences_text),
+      fallbackOutput.preference_summary,
     ),
     preference_json: sanitizePreferenceJson(rawOutput?.preference_json),
     needs_follow_up:
@@ -114,6 +117,12 @@ function sanitizeReceptionistOutput(
         : true,
     confidence_flags: ["provider:ok"],
   };
+
+  if (isMeaningfulProviderOutput(sanitizedOutput, fallbackOutput)) {
+    return sanitizedOutput;
+  }
+
+  return fallbackOutput;
 }
 
 function createFallbackReceptionistOutput(
@@ -238,4 +247,18 @@ function getPreferenceSummary(
   schedulingPreferencesText: string | null | undefined,
 ): string {
   return schedulingPreferencesText?.trim() ?? "";
+}
+
+function isMeaningfulProviderOutput(
+  sanitizedOutput: ReceptionistAgentOutput,
+  fallbackOutput: ReceptionistAgentOutput,
+): boolean {
+  return (
+    Object.keys(sanitizedOutput.resolved_fields).length > 0 ||
+    sanitizedOutput.follow_up_question !== fallbackOutput.follow_up_question ||
+    sanitizedOutput.summary_text !== fallbackOutput.summary_text ||
+    sanitizedOutput.preference_summary !== fallbackOutput.preference_summary ||
+    Object.keys(sanitizedOutput.preference_json).length > 0 ||
+    sanitizedOutput.needs_follow_up !== fallbackOutput.needs_follow_up
+  );
 }
