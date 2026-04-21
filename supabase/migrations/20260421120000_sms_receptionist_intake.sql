@@ -99,6 +99,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_trainer_approval_requests_pending_requ
   ON sms_trainer_approval_requests(request_code)
   WHERE status = 'pending';
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_trainer_approval_requests_pending_lead_id
+  ON sms_trainer_approval_requests(lead_id)
+  WHERE status = 'pending';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'sms_trainer_approval_requests_state_timestamps_check'
+  ) THEN
+    ALTER TABLE sms_trainer_approval_requests
+      ADD CONSTRAINT sms_trainer_approval_requests_state_timestamps_check
+      CHECK (
+        (status = 'pending' AND expires_at IS NOT NULL AND decided_at IS NULL)
+        OR (status IN ('approved', 'rejected', 'expired') AND decided_at IS NOT NULL)
+      );
+  END IF;
+END $$;
+
 DROP TRIGGER IF EXISTS set_timestamp_sms_intake_leads ON sms_intake_leads;
 CREATE TRIGGER set_timestamp_sms_intake_leads
   BEFORE UPDATE ON sms_intake_leads
