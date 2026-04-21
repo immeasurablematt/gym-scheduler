@@ -26,6 +26,25 @@ test("scheduled sessions require a valid client email and merge attendees", asyn
   });
 });
 
+test("scheduled sessions with existing event guests keep those guests during attendee sync", async () => {
+  const { buildCalendarSyncMutation } = await import("../lib/google/calendar-sync-contract.ts");
+
+  const result = buildCalendarSyncMutation({
+    clientEmail: "client@example.com",
+    existingAttendees: [
+      { email: "owner@example.com" },
+      { email: "assistant@example.com" },
+    ],
+    sessionStatus: "scheduled",
+  });
+
+  assert.deepEqual(result.attendees, [
+    { email: "owner@example.com" },
+    { email: "assistant@example.com" },
+    { email: "client@example.com" },
+  ]);
+});
+
 test("scheduled sessions throw when the client email is invalid", async () => {
   const { buildCalendarSyncMutation } = await import("../lib/google/calendar-sync-contract.ts");
 

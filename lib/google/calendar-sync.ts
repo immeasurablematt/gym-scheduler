@@ -3,8 +3,11 @@ import "server-only";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getSmsRuntimeConfig } from "@/lib/sms/config";
 import type { Database } from "@/types/supabase";
+import { buildCalendarSyncMutation } from "@/lib/google/calendar-sync-contract";
+import { assessClientInviteEligibility } from "@/lib/google/client-invite-eligibility";
 import {
   deleteGoogleCalendarEvent,
+  getGoogleCalendarEvent,
   upsertGoogleCalendarEvent,
 } from "@/lib/google/client";
 import {
@@ -132,8 +135,27 @@ export async function processCalendarSyncJob(jobId: string) {
 
     const view = await loadSessionCalendarView(session);
     const timeZone = connection.calendar_time_zone || getSmsRuntimeConfig().timeZone;
+    const inviteEligibility = assessClientInviteEligibility(view.clientUser?.email ?? null);
 
-    if (session.status === "cancelled") {
+    if (inviteEligibility.kind === "ineligible" && session.status !== "cancelled") {
+      throw new Error(inviteEligibility.syncError);
+    }
+
+    const syncMutation = buildCalendarSyncMutation({
+      clientEmail:
+        inviteEligibility.kind === "eligible"
+          ? inviteEligibility.email
+          : null,
+      existingAttendees:
+        session.calendar_external_id && session.status !== "cancelled"
+          ? (
+              await getGoogleCalendarEvent(connection, session.calendar_external_id)
+            )?.attendees ?? []
+          : [],
+      sessionStatus: session.status,
+    });
+
+    if (syncMutation.kind === "delete") {
       if (session.calendar_external_id) {
         await deleteGoogleCalendarEvent(connection, session.calendar_external_id);
       }
@@ -151,6 +173,7 @@ export async function processCalendarSyncJob(jobId: string) {
     }
 
     const event = await upsertGoogleCalendarEvent(connection, {
+      attendees: syncMutation.attendees,
       description: buildCalendarEventDescription(view),
       endTime: new Date(
         new Date(session.scheduled_at).getTime() +
