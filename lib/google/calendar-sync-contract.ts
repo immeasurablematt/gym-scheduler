@@ -2,7 +2,7 @@ import {
   mergeClientAttendee,
   requireInviteSuitableEmail,
   type GoogleCalendarAttendee,
-} from "./calendar-attendees.ts";
+} from "@/lib/google/calendar-attendees";
 
 export type CalendarSyncMutation =
   | {
