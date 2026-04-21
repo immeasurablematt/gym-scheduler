@@ -78,6 +78,7 @@ export type SmsOfferOutcome =
 export type RequestedSmsTimeOutcome =
   | { kind: "not_requested_time" }
   | { kind: "invalid_requested_time"; replyBody: string }
+  | { kind: "invite_email_required"; replyBody: string }
   | { kind: "booked"; replyBody: string; sessionId: string }
   | { kind: "offered_alternatives"; offerSetId: string; replyBody: string }
   | { kind: "calendar_unavailable"; replyBody: string };
@@ -172,6 +173,17 @@ export async function bookRequestedSmsTime(
     return {
       kind: "invalid_requested_time",
       replyBody: buildInvalidRequestedTimeReply(parsed),
+    };
+  }
+
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required",
+      replyBody: inviteEligibility.smsBookReply,
     };
   }
 
