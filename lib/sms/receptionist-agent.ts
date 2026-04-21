@@ -75,6 +75,10 @@ export async function runReceptionistAgent(
     return createFallbackReceptionistOutput(input, "fallback:runner-error");
   }
 
+  if (rawOutput == null) {
+    return createFallbackReceptionistOutput(input, "fallback:runner-unavailable");
+  }
+
   const confidenceScore = readConfidenceScore(rawOutput);
 
   if (confidenceScore !== null && confidenceScore < CONFIDENCE_THRESHOLD) {
