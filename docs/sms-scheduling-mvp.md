@@ -15,7 +15,7 @@ calendar sync path.
 - If that exact requested slot is unavailable, the app replies with up to 3 numbered alternatives
 - Explicit `Cancel` and `Reschedule` flows remain unchanged
 - Successful booking writes a real `sessions` row and `session_changes` row
-- Booking, reschedule, and cancel syncs include the client as a Google Calendar attendee when the trainer has a connected calendar
+- Booking, reschedule, and cancel syncs include the client as a Google Calendar attendee when the trainer has a connected calendar and the client has a valid email address
 - Unknown senders and booking conflicts receive clean SMS responses
 - Inbound and outbound SMS are logged in Supabase
 - Twilio webhooks are signature-verified, ACKed immediately, and deduplicated by `MessageSid`
