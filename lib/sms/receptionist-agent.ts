@@ -54,7 +54,6 @@ const CONFIDENCE_THRESHOLD = 0.7;
 const SAFE_RESOLVED_FIELD_KEYS = new Set([
   "client_name",
   "email",
-  "requested_trainer_id",
   "requested_trainer_name_raw",
   "scheduling_preferences_text",
 ]);

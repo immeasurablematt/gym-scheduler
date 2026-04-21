@@ -83,7 +83,6 @@ test("runReceptionistAgent strips unsafe action fields on the normal provider pa
     resolved_fields: {
       client_name: "Alex Client",
       email: "alex@example.com",
-      requested_trainer_id: "trainer-1",
     },
     follow_up_question: "What is your email address?",
     summary_text: "Alex wants to train with Maya.",
@@ -92,6 +91,7 @@ test("runReceptionistAgent strips unsafe action fields on the normal provider pa
     needs_follow_up: false,
     confidence_flags: ["provider:ok"],
   });
+  assert.ok(!("requested_trainer_id" in result.resolved_fields));
 });
 
 test("runReceptionistAgent falls back deterministically when no runner is available", async () => {
