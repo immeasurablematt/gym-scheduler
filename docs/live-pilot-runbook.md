@@ -12,6 +12,8 @@ current live environment.
   `11111111-1111-1111-1111-111111111111`.
 - The live client SMS sender is the phone number currently stored on
   `users.id = 'client-preview-1'`.
+- The client profile for `client-preview-1` has a valid email address so
+  Google Calendar invites can be sent.
 - SMS availability is currently configured for `America/Toronto`.
 - Active availability templates are currently:
   - Monday to Friday
@@ -98,6 +100,8 @@ Expected result:
   - `change_type = 'created'`
   - `reason = 'Booked via SMS'`
 - the session appears on the trainer Google Calendar
+- the trainer Google Calendar event includes the client as an attendee
+- the client receives the Google invite email
 
 ### 3. Verify busy-time exclusion
 
@@ -130,6 +134,8 @@ Expected result:
 - a new `sessions` row is created for that exact requested time
 - `session_changes.reason = 'Booked via SMS'`
 - the session syncs to Google Calendar
+- the trainer Google Calendar event includes the client as an attendee
+- the client receives the Google invite email
 
 If that exact slot is not open in the current live window, the app should reply
 with up to 3 numbered alternatives instead of silently failing.
@@ -155,7 +161,8 @@ Expected result:
 - a `session_changes` row is created with:
   - `change_type = 'rescheduled'`
   - `reason = 'Rescheduled via SMS'`
-- the Google Calendar event moves to the new time
+- the existing Google event is updated in place
+- the client receives the Google update email
 
 ### 6. Cancel
 
@@ -174,7 +181,8 @@ Expected result:
 - the target `sessions` row is updated to:
   - `status = 'cancelled'`
   - `calendar_sync_status = 'synced'`
-- the session's Google Calendar event is removed
+- the Google event is removed
+- the client receives the Google cancellation email
 - a `session_changes` row is created with:
   - `change_type = 'cancelled'`
   - `reason = 'Cancelled via SMS'`

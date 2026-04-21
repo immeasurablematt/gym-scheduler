@@ -225,6 +225,7 @@ export async function buildReply(
 
   if (
     requestedTimeOutcome.kind === "invalid_requested_time" ||
+    requestedTimeOutcome.kind === "invite_email_required" ||
     requestedTimeOutcome.kind === "calendar_unavailable"
   ) {
     return {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { TrainerCalendarUnavailableError } from "@/lib/google/client";
+import { assessClientInviteEligibility } from "@/lib/google/client-invite-eligibility";
 import { syncSessionToCalendar } from "@/lib/google/calendar-sync";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
@@ -33,6 +34,10 @@ import type { Database, Json } from "@/types/supabase";
 type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 
 export type SmsBookingOutcome =
+  | {
+      kind: "invite_email_required";
+      replyBody: string;
+    }
   | {
       kind: "booked";
       replyBody: string;
@@ -73,6 +78,7 @@ export type SmsOfferOutcome =
 export type RequestedSmsTimeOutcome =
   | { kind: "not_requested_time" }
   | { kind: "invalid_requested_time"; replyBody: string }
+  | { kind: "invite_email_required"; replyBody: string }
   | { kind: "booked"; replyBody: string; sessionId: string }
   | { kind: "offered_alternatives"; offerSetId: string; replyBody: string }
   | { kind: "calendar_unavailable"; replyBody: string };
@@ -170,6 +176,17 @@ export async function bookRequestedSmsTime(
     };
   }
 
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required",
+      replyBody: inviteEligibility.smsBookReply,
+    };
+  }
+
   try {
     const candidateSlots = await findAvailableSmsSlots({
       clientId: context.client.id,
@@ -258,6 +275,20 @@ export async function bookSmsOfferSelection(
       kind: "invalid_selection",
       replyBody:
         "That option is no longer available. Reply with one of the current numbers, or text availability for a fresh set.",
+    };
+  }
+
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required",
+      replyBody:
+        selectedOffer.flow_type === "reschedule"
+          ? inviteEligibility.smsRescheduleReply
+          : inviteEligibility.smsBookReply,
     };
   }
 

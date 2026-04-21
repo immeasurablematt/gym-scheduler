@@ -3,6 +3,7 @@ import "server-only";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 import { TrainerCalendarUnavailableError } from "@/lib/google/client";
+import { assessClientInviteEligibility } from "@/lib/google/client-invite-eligibility";
 import { syncSessionToCalendar } from "@/lib/google/calendar-sync";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
@@ -40,6 +41,7 @@ type RequestedSmsRescheduleOutcome =
   | { kind: "not_requested_time" }
   | { kind: "already_scheduled"; replyBody: string; sessionId: string }
   | { kind: "invalid_requested_time"; replyBody: string }
+  | { kind: "invite_email_required"; replyBody: string; offerSetId: null }
   | { kind: "rescheduled"; replyBody: string; sessionId: string }
   | { kind: "retry_reschedule"; replyBody: string }
   | { kind: "offered_alternatives"; offerSetId: string; replyBody: string }
@@ -236,6 +238,18 @@ export async function handleRequestedRescheduleTime(
 
   if (target.kind !== "resolved") {
     return target;
+  }
+
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required" as const,
+      offerSetId: null,
+      replyBody: inviteEligibility.smsRescheduleReply,
+    };
   }
 
   if (parsed.startsAt === target.session.scheduled_at) {
