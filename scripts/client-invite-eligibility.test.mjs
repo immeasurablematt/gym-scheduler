@@ -61,11 +61,7 @@ test("assessClientInviteEligibility returns eligible for valid email", async () 
   });
 });
 
-if (!hasModuleMocks) {
-  test.skip(
-    "bookRequestedSmsTime returns invite_email_required for exact-time booking when client email is invalid",
-  );
-} else {
+if (hasModuleMocks) {
   test("bookRequestedSmsTime returns invite_email_required for exact-time booking when client email is invalid", async (t) => {
     const calls = {
       createServerSupabaseClient: 0,
