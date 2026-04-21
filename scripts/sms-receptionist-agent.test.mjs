@@ -135,6 +135,23 @@ test("runReceptionistAgent falls back when blank provider fields sanitize away",
   });
 });
 
+test("runReceptionistAgent falls back when needs_follow_up is the only non-default provider signal", async () => {
+  const result = await runReceptionistAgent(createInput(), async () => ({
+    needs_follow_up: false,
+    confidence_score: 0.95,
+  }));
+
+  assert.deepEqual(result, {
+    resolved_fields: {},
+    follow_up_question: "What is the best email address to reach you at?",
+    summary_text: "Collected: trainer Maya, client name Alex Client, preferences weekday evenings after 6pm.",
+    preference_summary: "weekday evenings after 6pm",
+    preference_json: {},
+    needs_follow_up: true,
+    confidence_flags: ["fallback:empty-provider-output"],
+  });
+});
+
 test("runReceptionistAgent falls back deterministically when no runner is available", async () => {
   const result = await runReceptionistAgent(createInput(), null);
 
@@ -171,6 +188,22 @@ test("runReceptionistAgent falls back deterministically when the runner returns 
     preference_json: {},
     needs_follow_up: true,
     confidence_flags: ["fallback:runner-unavailable"],
+  });
+});
+
+test("runReceptionistAgent falls back deterministically when the runner throws", async () => {
+  const result = await runReceptionistAgent(createInput(), async () => {
+    throw new Error("provider unavailable");
+  });
+
+  assert.deepEqual(result, {
+    resolved_fields: {},
+    follow_up_question: "What is the best email address to reach you at?",
+    summary_text: "Collected: trainer Maya, client name Alex Client, preferences weekday evenings after 6pm.",
+    preference_summary: "weekday evenings after 6pm",
+    preference_json: {},
+    needs_follow_up: true,
+    confidence_flags: ["fallback:runner-error"],
   });
 });
 

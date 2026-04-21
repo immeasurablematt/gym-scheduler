@@ -258,7 +258,6 @@ function isMeaningfulProviderOutput(
     sanitizedOutput.follow_up_question !== fallbackOutput.follow_up_question ||
     sanitizedOutput.summary_text !== fallbackOutput.summary_text ||
     sanitizedOutput.preference_summary !== fallbackOutput.preference_summary ||
-    Object.keys(sanitizedOutput.preference_json).length > 0 ||
-    sanitizedOutput.needs_follow_up !== fallbackOutput.needs_follow_up
+    Object.keys(sanitizedOutput.preference_json).length > 0
   );
 }
