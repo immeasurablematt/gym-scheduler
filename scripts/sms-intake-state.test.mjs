@@ -54,6 +54,7 @@ test("hasUsefulSchedulingPreferences rejects vague timing answers", () => {
   assert.equal(hasUsefulSchedulingPreferences("weekday evenings after 6pm"), true);
   assert.equal(hasUsefulSchedulingPreferences("weekdays after 4 is best"), true);
   assert.equal(hasUsefulSchedulingPreferences("tuesdays and thursdays work best"), true);
+  assert.equal(hasUsefulSchedulingPreferences("mostly mornings, never fridays"), true);
   assert.equal(
     hasUsefulSchedulingPreferences("flexible, but weekdays after 4 is best"),
     true,
