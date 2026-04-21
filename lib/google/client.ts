@@ -154,23 +154,24 @@ export async function upsertGoogleCalendarEvent(
       : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
   );
   url.searchParams.set("sendUpdates", "all");
+  const eventPayload = {
+    ...(input.attendees ? { attendees: input.attendees } : {}),
+    description: input.description,
+    end: {
+      dateTime: input.endTime,
+      timeZone: input.timeZone,
+    },
+    start: {
+      dateTime: input.startTime,
+      timeZone: input.timeZone,
+    },
+    summary: input.title,
+  };
   const body = await authorizedGoogleRequest<GoogleCalendarEventResponse>(
     accessToken,
     url.toString(),
     {
-      body: JSON.stringify({
-        attendees: input.attendees ?? [],
-        description: input.description,
-        end: {
-          dateTime: input.endTime,
-          timeZone: input.timeZone,
-        },
-        start: {
-          dateTime: input.startTime,
-          timeZone: input.timeZone,
-        },
-        summary: input.title,
-      }),
+      body: JSON.stringify(eventPayload),
       headers: {
         "content-type": "application/json",
       },

@@ -50,6 +50,87 @@ test("upsertGoogleCalendarEvent sends attendees and sendUpdates=all on create", 
   assert.deepEqual(payload.attendees, [{ email: "client@example.com" }]);
 });
 
+test("getGoogleCalendarEvent hits the event URL with auth", async () => {
+  const requests = [];
+  global.fetch = async (url, init = {}) => {
+    requests.push({ init, url: String(url) });
+
+    if (String(url).includes("/token")) {
+      return Response.json({ access_token: "token", expires_in: 3600 });
+    }
+
+    return Response.json({ id: "event-123" });
+  };
+
+  const { getGoogleCalendarEvent } = await import("../lib/google/client.ts");
+
+  await getGoogleCalendarEvent(
+    {
+      access_token: "token",
+      calendar_time_zone: "America/Toronto",
+      google_calendar_id: "primary",
+      provider: "google",
+      refresh_token: "refresh",
+      sync_enabled: true,
+      token_expires_at: new Date(Date.now() + 300_000).toISOString(),
+      trainer_id: "trainer-1",
+    },
+    "event-123",
+  );
+
+  const request = requests.at(-1);
+  assert.equal(request.init.method, undefined);
+  assert.equal(
+    request.init.headers.authorization,
+    "Bearer token",
+  );
+  assert.equal(
+    request.url,
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events/event-123",
+  );
+});
+
+test("upsertGoogleCalendarEvent omits attendees on patch when not provided", async () => {
+  const requests = [];
+  global.fetch = async (url, init = {}) => {
+    requests.push({ init, url: String(url) });
+
+    if (String(url).includes("/token")) {
+      return Response.json({ access_token: "token", expires_in: 3600 });
+    }
+
+    return Response.json({ id: "event-123" });
+  };
+
+  const { upsertGoogleCalendarEvent } = await import("../lib/google/client.ts");
+
+  await upsertGoogleCalendarEvent(
+    {
+      access_token: "token",
+      calendar_time_zone: "America/Toronto",
+      google_calendar_id: "primary",
+      provider: "google",
+      refresh_token: "refresh",
+      sync_enabled: true,
+      token_expires_at: new Date(Date.now() + 300_000).toISOString(),
+      trainer_id: "trainer-1",
+    },
+    {
+      description: "Desc",
+      endTime: "2026-04-21T16:00:00.000Z",
+      eventId: "event-123",
+      startTime: "2026-04-21T15:00:00.000Z",
+      timeZone: "America/Toronto",
+      title: "Client · Strength",
+    },
+  );
+
+  const request = requests.at(-1);
+  assert.equal(request.init.method, "PATCH");
+  const payload = JSON.parse(request.init.body);
+  assert.equal(Object.hasOwn(payload, "attendees"), false);
+});
+
 test("deleteGoogleCalendarEvent sends guest updates on delete", async () => {
   const requests = [];
   global.fetch = async (url, init = {}) => {
