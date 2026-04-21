@@ -36,7 +36,13 @@ calendar sync path.
 4. Known approved clients stay on the existing deterministic booking, reschedule, and cancel flow.
 5. On the known-client path, availability requests and exact free-text time requests generate slots from the trainer's availability templates, minus blocked times, existing session conflicts, and live Google Calendar busy time.
 6. If a free-text request matches an exact open slot, the app books it immediately and sends the normal booking confirmation SMS. If the exact requested slot is unavailable, the app stores up to three upcoming alternatives as an offer set and sends a numbered SMS reply.
-7. Unknown or active intake senders stay on the receptionist lane until the app has:
+7. Unknown or active intake senders stay on the receptionist lane first. On the
+   normal configured path, the receptionist uses OpenAI to extract trainer,
+   client name, email, and timing preferences from messy client language, but
+   the app still validates trainer resolution and persists every field
+   deterministically. If `OPENAI_API_KEY` is missing or the model response is
+   unusable, the lane falls back to the existing deterministic prompts until
+   the app has:
    - a resolved trainer
    - client name
    - valid email
@@ -140,10 +146,14 @@ If the signed `POST` returns `403`, the webhook URL or auth token does not match
 ### Behavior assumptions
 
 - Phone matching uses normalized E.164-style strings, with US/Canada 10-digit numbers normalized to `+1XXXXXXXXXX`
-- The receptionist lane is deterministic at the state-transition boundary:
+- The receptionist lane can use OpenAI for extraction on the normal configured
+  happy path, but it remains deterministic at the state-transition boundary:
   - trainer resolution must be validated
   - approval commands must come from the trainer phone
   - promotion must fail closed into manual review instead of partial creation
+- If `OPENAI_API_KEY` is missing or the model response is invalid or
+  low-confidence, intake falls back to the existing deterministic prompts
+  instead of breaking SMS intake
 - Booking is blocked for unapproved intake leads with:
   - `I can help get you set up first. Once your trainer approves, I can help with scheduling by text.`
 - Trainer approval SMS uses:

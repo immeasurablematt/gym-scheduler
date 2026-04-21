@@ -50,6 +50,30 @@ Expected result:
    - `09:00` to `17:00`
    - `America/Toronto`
 
+## OpenAI Receptionist Check
+
+Before running the unknown-sender intake test:
+
+- confirm `OPENAI_API_KEY` is set in the active environment; without it, intake
+  still works, but the model-backed receptionist happy path is disabled
+- optionally set `SMS_RECEPTIONIST_OPENAI_MODEL` if you are not using the
+  default `gpt-5.4-mini`
+- use one intentionally messy intake conversation:
+  - trainer plus timing in one message
+  - name plus email in another
+  - one vague preference that should trigger a follow-up question
+
+Example messy intake sequence:
+
+```text
+Hi, I want to train with Maya and evenings usually work best.
+I'm Alex Client and my email is alex@example.com.
+Tuesday or Thursday after work is probably best, but I'm flexible.
+```
+
+If the OpenAI call fails or is unconfigured, the system will fall back to the
+deterministic receptionist prompts instead of breaking SMS intake.
+
 ## Important pilot caveat
 
 The current environment is still running in preview mode without Clerk server
@@ -67,7 +91,7 @@ URL until auth is enabled.
 From a phone number that does not already exist in `users.phone_number`, send:
 
 ```text
-Hi, I want to train with Maya
+Hi, I want to train with Maya and evenings usually work best.
 ```
 
 Expected result:
@@ -89,9 +113,8 @@ Reply through the receptionist prompts until the app has:
 Example answers:
 
 ```text
-Alex Client
-alex@example.com
-Tuesday and Thursday evenings after 6pm
+I'm Alex Client and my email is alex@example.com.
+Tuesday or Thursday after work is probably best, but I'm flexible.
 ```
 
 Expected result:
