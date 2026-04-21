@@ -16,6 +16,12 @@ async function importBookingService() {
   );
 }
 
+async function importSessionLifecycle() {
+  return import(
+    new URL(`../lib/sms/session-lifecycle.ts?case=${++importCounter}`, import.meta.url).href
+  );
+}
+
 function createKnownClientContext() {
   return {
     client: {
@@ -337,5 +343,137 @@ if (hasModuleMocks) {
     assert.equal(calls.sendTrainerSessionNotification, 0);
     assert.equal(calls.syncSessionToCalendar, 0);
     assert.equal(calls.createServerSupabaseClient, 0);
+  });
+
+  test("handleRequestedRescheduleTime returns no_session before invite eligibility when no sessions exist", async (t) => {
+    const calls = {
+      createServerSupabaseClient: 0,
+      getLatestPendingRescheduleOfferSet: 0,
+    };
+
+    await t.mock.module("server-only", {
+      defaultExport: {},
+    });
+    await t.mock.module("@/lib/google/client", {
+      namedExports: {
+        TrainerCalendarUnavailableError: class TrainerCalendarUnavailableError extends Error {},
+      },
+    });
+    await t.mock.module("@/lib/google/calendar-sync", {
+      namedExports: {
+        syncSessionToCalendar: async () => undefined,
+      },
+    });
+    await t.mock.module("@/lib/supabase/server", {
+      namedExports: {
+        createServerSupabaseClient: () => {
+          calls.createServerSupabaseClient++;
+
+          return {
+            from(table) {
+              if (table !== "sessions") {
+                throw new Error(`Unexpected table: ${table}`);
+              }
+
+              const query = {
+                eq() {
+                  return query;
+                },
+                gte() {
+                  return query;
+                },
+                limit() {
+                  return {
+                    data: [],
+                    error: null,
+                  };
+                },
+                order() {
+                  return query;
+                },
+                select() {
+                  return query;
+                },
+              };
+
+              return query;
+            },
+          };
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/availability-engine", {
+      namedExports: {
+        findAvailableSmsSlots: async () => [],
+        hasAvailabilitySource: async () => true,
+      },
+    });
+    await t.mock.module("@/lib/sms/conversation-service", {
+      namedExports: {
+        completeSmsConversation: async () => undefined,
+        createSmsConversation: async () => ({ id: "conversation-1" }),
+      },
+    });
+    await t.mock.module("@/lib/sms/config", {
+      namedExports: {
+        getSmsRuntimeConfig: () => ({
+          maxSlotsOffered: 3,
+          offerExpiryHours: 4,
+          searchDays: 7,
+          sessionDurationMinutes: 60,
+          sessionType: "personal_training",
+          slotIntervalMinutes: 30,
+          timeZone: "America/Toronto",
+        }),
+      },
+    });
+    await t.mock.module("@/lib/sms/offer-service", {
+      namedExports: {
+        createSmsOfferSet: async () => ({ offerSetId: "offer-1" }),
+        expireOfferSet: async () => undefined,
+        expirePendingOfferSets: async () => undefined,
+        getLatestPendingRescheduleOfferSet: async () => {
+          calls.getLatestPendingRescheduleOfferSet++;
+          return null;
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/phone", {
+      namedExports: {
+        normalizePhoneNumber: (value) => value,
+      },
+    });
+    await t.mock.module("@/lib/sms/requested-time-parser", {
+      namedExports: {
+        parseRequestedSmsTime: () => ({
+          kind: "requested_time",
+          startsAt: "2026-04-21T18:00:00.000Z",
+        }),
+      },
+    });
+    await t.mock.module("@/lib/sms/trainer-notifications", {
+      namedExports: {
+        sendTrainerSessionNotification: async () => undefined,
+      },
+    });
+    await t.mock.module("@/lib/sms/timezone", {
+      namedExports: {
+        formatSlotLabel: () => "Tue, Apr 21, 2:00 PM",
+      },
+    });
+
+    const { handleRequestedRescheduleTime } = await importSessionLifecycle();
+    const result = await handleRequestedRescheduleTime(createKnownClientContext(), {
+      body: "tomorrow at 2pm",
+      inboundMessageId: "inbound-3",
+    });
+
+    assert.deepEqual(result, {
+      kind: "no_session",
+      replyBody:
+        "I don't see an upcoming session to move right now. Text availability if you want a fresh booking.",
+    });
+    assert.equal(calls.createServerSupabaseClient, 1);
+    assert.equal(calls.getLatestPendingRescheduleOfferSet, 1);
   });
 }

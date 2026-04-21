@@ -231,6 +231,15 @@ export async function handleRequestedRescheduleTime(
     };
   }
 
+  const target = await resolveRequestedRescheduleTargetSession(
+    context,
+    input.inboundMessageId,
+  );
+
+  if (target.kind !== "resolved") {
+    return target;
+  }
+
   const inviteEligibility = assessClientInviteEligibility(
     context.clientUser.email,
   );
@@ -241,15 +250,6 @@ export async function handleRequestedRescheduleTime(
       offerSetId: null,
       replyBody: inviteEligibility.smsRescheduleReply,
     };
-  }
-
-  const target = await resolveRequestedRescheduleTargetSession(
-    context,
-    input.inboundMessageId,
-  );
-
-  if (target.kind !== "resolved") {
-    return target;
   }
 
   if (parsed.startsAt === target.session.scheduled_at) {
