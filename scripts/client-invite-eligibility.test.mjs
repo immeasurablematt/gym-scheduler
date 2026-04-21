@@ -197,4 +197,145 @@ if (hasModuleMocks) {
     assert.equal(calls.syncSessionToCalendar, 0);
     assert.equal(calls.sendTrainerSessionNotification, 0);
   });
+
+  test("bookSmsOfferSelection returns the reschedule invite reply for invalid email on reschedule offers", async (t) => {
+    const calls = {
+      createServerSupabaseClient: 0,
+      getLatestPendingOfferSet: 0,
+      markOfferBooked: 0,
+      markOfferConflicted: 0,
+      rescheduleSessionFromOffer: 0,
+      sendTrainerSessionNotification: 0,
+      syncSessionToCalendar: 0,
+    };
+
+    await t.mock.module("server-only", {
+      defaultExport: {},
+    });
+    await t.mock.module("@/lib/google/client", {
+      namedExports: {
+        TrainerCalendarUnavailableError: class TrainerCalendarUnavailableError extends Error {},
+      },
+    });
+    await t.mock.module("@/lib/google/calendar-sync", {
+      namedExports: {
+        syncSessionToCalendar: async () => {
+          calls.syncSessionToCalendar++;
+        },
+      },
+    });
+    await t.mock.module("@/lib/supabase/server", {
+      namedExports: {
+        createServerSupabaseClient: () => {
+          calls.createServerSupabaseClient++;
+          throw new Error("Unexpected supabase access in offer selection test");
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/availability-engine", {
+      namedExports: {
+        findAvailableSmsSlots: async () => [],
+        hasAvailabilitySource: async () => true,
+      },
+    });
+    await t.mock.module("@/lib/sms/client-directory", {
+      namedExports: {
+        SmsKnownClientContext: {},
+      },
+    });
+    await t.mock.module("@/lib/sms/config", {
+      namedExports: {
+        getSmsRuntimeConfig: () => ({
+          maxSlotsOffered: 3,
+          offerExpiryHours: 4,
+          searchDays: 7,
+          sessionDurationMinutes: 60,
+          sessionType: "personal_training",
+          slotIntervalMinutes: 30,
+          timeZone: "America/Toronto",
+        }),
+      },
+    });
+    await t.mock.module("@/lib/sms/offer-service", {
+      namedExports: {
+        createSmsOfferSet: async () => ({ offerSetId: "offer-1" }),
+        expirePendingOfferSets: async () => undefined,
+        getLatestPendingOfferSet: async () => {
+          calls.getLatestPendingOfferSet++;
+
+          return [
+            {
+              flow_type: "reschedule",
+              offer_set_id: "offer-1",
+              slot_position: 1,
+              slot_starts_at: "2026-04-21T18:00:00.000Z",
+              status: "pending",
+              target_session_id: "session-1",
+              time_zone: "America/Toronto",
+            },
+          ];
+        },
+        markOfferBooked: async () => {
+          calls.markOfferBooked++;
+        },
+        markOfferConflicted: async () => {
+          calls.markOfferConflicted++;
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/phone", {
+      namedExports: {
+        getFirstName: (value) => value,
+        normalizePhoneNumber: (value) => value,
+      },
+    });
+    await t.mock.module("@/lib/sms/requested-time-parser", {
+      namedExports: {
+        parseRequestedSmsTime: () => ({
+          kind: "not_requested_time",
+        }),
+      },
+    });
+    await t.mock.module("@/lib/sms/session-lifecycle", {
+      namedExports: {
+        isSessionConflictError: () => false,
+        rescheduleSessionFromOffer: async () => {
+          calls.rescheduleSessionFromOffer++;
+          throw new Error("Unexpected reschedule path");
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/trainer-notifications", {
+      namedExports: {
+        sendTrainerSessionNotification: async () => {
+          calls.sendTrainerSessionNotification++;
+        },
+      },
+    });
+    await t.mock.module("@/lib/sms/timezone", {
+      namedExports: {
+        formatSlotLabel: () => "Tue, Apr 21, 2:00 PM",
+      },
+    });
+
+    const { bookSmsOfferSelection } = await importBookingService();
+    const result = await bookSmsOfferSelection(
+      createKnownClientContext(),
+      "1",
+      "inbound-2",
+    );
+
+    assert.deepEqual(result, {
+      kind: "invite_email_required",
+      replyBody:
+        "I can't move that session yet because your account needs a valid email for calendar invites. Please contact the gym so we can fix it.",
+    });
+    assert.equal(calls.getLatestPendingOfferSet, 1);
+    assert.equal(calls.markOfferBooked, 0);
+    assert.equal(calls.markOfferConflicted, 0);
+    assert.equal(calls.rescheduleSessionFromOffer, 0);
+    assert.equal(calls.sendTrainerSessionNotification, 0);
+    assert.equal(calls.syncSessionToCalendar, 0);
+    assert.equal(calls.createServerSupabaseClient, 0);
+  });
 }

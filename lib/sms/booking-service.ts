@@ -258,17 +258,6 @@ export async function bookSmsOfferSelection(
     };
   }
 
-  const inviteEligibility = assessClientInviteEligibility(
-    context.clientUser.email,
-  );
-
-  if (inviteEligibility.kind === "ineligible") {
-    return {
-      kind: "invite_email_required",
-      replyBody: inviteEligibility.smsBookReply,
-    };
-  }
-
   const offers = await getLatestPendingOfferSet(context.client.id, context.trainer.id);
 
   if (!offers || offers.length === 0) {
@@ -286,6 +275,20 @@ export async function bookSmsOfferSelection(
       kind: "invalid_selection",
       replyBody:
         "That option is no longer available. Reply with one of the current numbers, or text availability for a fresh set.",
+    };
+  }
+
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required",
+      replyBody:
+        selectedOffer.flow_type === "reschedule"
+          ? inviteEligibility.smsRescheduleReply
+          : inviteEligibility.smsBookReply,
     };
   }
 
