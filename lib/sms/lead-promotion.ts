@@ -32,19 +32,25 @@ type ClientRecord = {
 };
 
 type LeadPromotionRepo = {
-  findUserIdentityConflict(identity: {
-    email: string;
-    normalizedPhone: string;
-  }): Promise<unknown | null>;
-  createUser(input: UserRecord): Promise<UserRecord>;
-  createClient(input: {
-    user_id: string;
-    trainer_id: string | null;
-  }): Promise<ClientRecord>;
-  updateLead(
-    leadId: string,
-    patch: Partial<SmsIntakeLeadRecord>,
-  ): Promise<SmsIntakeLeadRecord>;
+  promoteLeadAtomically(input: {
+    lead_id: string;
+    user: UserRecord;
+    client: {
+      trainer_id: string | null;
+    };
+  }): Promise<
+    | {
+        kind: "promoted";
+        user: UserRecord;
+        client: ClientRecord;
+        lead: SmsIntakeLeadRecord;
+      }
+    | {
+        kind: "needs_manual_review";
+        reason: "duplicate_identity_conflict";
+        lead: SmsIntakeLeadRecord;
+      }
+  >;
 };
 
 export const SETUP_DELAY_REPLY =
@@ -81,46 +87,27 @@ export async function promoteApprovedLead(
     throw new Error("Approved intake leads must include client identity details");
   }
 
-  const conflict = await repo.findUserIdentityConflict({
-    email,
-    normalizedPhone: input.lead.normalized_phone,
+  const userId = `sms-client-${(input.createUuid ?? randomUUID)()}`;
+  const outcome = await repo.promoteLeadAtomically({
+    lead_id: input.lead.id,
+    user: {
+      id: userId,
+      email,
+      full_name: fullName,
+      role: "client",
+      phone_number: input.lead.normalized_phone,
+    },
+    client: {
+      trainer_id: input.lead.requested_trainer_id,
+    },
   });
 
-  if (conflict) {
-    const lead = await repo.updateLead(input.lead.id, {
-      status: "needs_manual_review",
-    });
-
+  if (outcome.kind === "needs_manual_review") {
     return {
-      kind: "needs_manual_review",
-      reason: "duplicate_identity_conflict",
+      ...outcome,
       clientReply: SETUP_DELAY_REPLY,
-      lead,
     };
   }
 
-  const userId = `sms-client-${(input.createUuid ?? randomUUID)()}`;
-  const user = await repo.createUser({
-    id: userId,
-    email,
-    full_name: fullName,
-    role: "client",
-    phone_number: input.lead.normalized_phone,
-  });
-  const client = await repo.createClient({
-    user_id: user.id,
-    trainer_id: input.lead.requested_trainer_id,
-  });
-  const lead = await repo.updateLead(input.lead.id, {
-    approved_user_id: user.id,
-    approved_client_id: client.id,
-    status: "approved",
-  });
-
-  return {
-    kind: "promoted",
-    user,
-    client,
-    lead,
-  };
+  return outcome;
 }

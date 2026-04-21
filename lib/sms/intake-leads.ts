@@ -60,6 +60,9 @@ type PersistValidatedLeadRepo = {
 type PersistValidatedLeadUpdatesInput = {
   lead: SmsIntakeLeadRecord;
   updates: Partial<SmsIntakeLeadRecord> & Record<string, unknown>;
+  validatedTrainer?: {
+    id: string | null | undefined;
+  } | null;
 };
 
 export async function createOrResumeIntakeLead(
@@ -116,7 +119,7 @@ export async function persistValidatedLeadUpdates(
   const patch: Partial<SmsIntakeLeadRecord> = {};
   const persistedFields: string[] = [];
 
-  const trainerId = normalizeOptionalText(input.updates.requested_trainer_id);
+  const trainerId = normalizeOptionalText(input.validatedTrainer?.id);
   if (trainerId) {
     patch.requested_trainer_id = trainerId;
     persistedFields.push("requested_trainer_id");
@@ -145,12 +148,20 @@ export async function persistValidatedLeadUpdates(
   const schedulingPreferences = normalizeOptionalText(
     input.updates.scheduling_preferences_text,
   );
+  const schedulingPreferencesJson = normalizeJsonObject(
+    input.updates.scheduling_preferences_json,
+  );
   if (
     schedulingPreferences &&
     hasUsefulSchedulingPreferences(schedulingPreferences)
   ) {
     patch.scheduling_preferences_text = schedulingPreferences;
     persistedFields.push("scheduling_preferences_text");
+  }
+
+  if (schedulingPreferencesJson) {
+    patch.scheduling_preferences_json = schedulingPreferencesJson;
+    persistedFields.push("scheduling_preferences_json");
   }
 
   if (persistedFields.length === 0) {
@@ -195,4 +206,22 @@ function normalizeOptionalText(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  try {
+    const cloned = JSON.parse(JSON.stringify(value));
+
+    if (cloned && typeof cloned === "object" && !Array.isArray(cloned)) {
+      return cloned as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }

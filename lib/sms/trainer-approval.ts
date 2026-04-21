@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createAwaitingTrainerApprovalPatch } from "./intake-leads.ts";
 import { normalizePhoneNumber } from "./phone.ts";
 
 type SmsIntakeLeadRecord = {
@@ -47,30 +46,54 @@ type PrepareTrainerApprovalRepo = {
     trainer_name: string | null;
     phone_number: string | null;
   } | null>;
-  createApprovalRequest(input: {
+  createApprovalRequestWithLeadUpdate(input: {
     lead_id: string;
     trainer_id: string;
     request_code: string;
     expires_at: string;
-  }): Promise<SmsTrainerApprovalRequestRecord>;
+    summary_for_trainer: string;
+  }): Promise<{
+    request: SmsTrainerApprovalRequestRecord;
+    lead: SmsIntakeLeadRecord;
+  }>;
   updateLead(
     leadId: string,
     patch: Partial<SmsIntakeLeadRecord>,
   ): Promise<SmsIntakeLeadRecord>;
 };
 
+type TrainerDecisionLookup =
+  | {
+      kind: "pending";
+      request: SmsTrainerApprovalRequestRecord;
+    }
+  | {
+      kind: "unknown_code";
+    }
+  | {
+      kind: "expired_request";
+      request: SmsTrainerApprovalRequestRecord;
+    }
+  | {
+      kind: "already_decided";
+      request: SmsTrainerApprovalRequestRecord;
+    };
+
 type HandleTrainerApprovalRepo = {
-  findPendingRequestByCode(
-    requestCode: string,
-  ): Promise<SmsTrainerApprovalRequestRecord | null>;
-  updateApprovalRequest(
-    requestId: string,
-    patch: Partial<SmsTrainerApprovalRequestRecord>,
-  ): Promise<SmsTrainerApprovalRequestRecord>;
-  updateLead(
-    leadId: string,
-    patch: Partial<SmsIntakeLeadRecord>,
-  ): Promise<SmsIntakeLeadRecord>;
+  findDecisionRequest(input: {
+    requestCode: string;
+    senderPhone: string;
+  }): Promise<TrainerDecisionLookup>;
+  applyDecision(input: {
+    requestId: string;
+    leadId: string;
+    decision: "approved" | "rejected";
+    decidedAt: string;
+    decisionMessageId: string;
+  }): Promise<{
+    request: SmsTrainerApprovalRequestRecord;
+    lead: SmsIntakeLeadRecord;
+  }>;
 };
 
 export function buildTrainerApprovalSummary(
@@ -81,18 +104,23 @@ export function buildTrainerApprovalSummary(
     | "scheduling_preferences_text"
     | "requested_trainer_name_raw"
   >,
-  options?: { trainerName?: string | null },
+  options: { trainerName?: string | null; requestCode: string },
 ): string {
   const trainerName =
-    options?.trainerName?.trim() ||
+    options.trainerName?.trim() ||
     lead.requested_trainer_name_raw?.trim() ||
     "trainer";
   const clientName = lead.client_name?.trim() || "Unknown client";
   const email = lead.email?.trim() || "missing email";
   const preferences =
     lead.scheduling_preferences_text?.trim() || "missing preferences";
+  const requestCode = sanitizeRequestCode(options.requestCode);
 
-  return `${clientName} wants to train with ${trainerName}. Email: ${email}. Scheduling preferences: ${preferences}. Reply APPROVE <code> or REJECT <code>.`;
+  if (!requestCode) {
+    throw new Error("Trainer approval summary requires a request code");
+  }
+
+  return `${clientName} wants to train with ${trainerName}. Email: ${email}. Scheduling preferences: ${preferences}. Reply APPROVE ${requestCode} or REJECT ${requestCode}.`;
 }
 
 export function generateTrainerRequestCode(
@@ -169,7 +197,11 @@ export async function prepareTrainerApprovalRequest(
   const trainerContact = await repo.getTrainerContact(trainerId);
   const trainerPhone = normalizePhoneNumber(trainerContact?.phone_number);
 
-  if (!trainerContact || !trainerPhone) {
+  if (
+    !trainerContact ||
+    trainerContact.trainer_id !== trainerId ||
+    !trainerPhone
+  ) {
     const lead = await repo.updateLead(input.lead.id, {
       status: "needs_manual_review",
     });
@@ -181,20 +213,18 @@ export async function prepareTrainerApprovalRequest(
     };
   }
 
+  const requestCode = generateTrainerRequestCode(input.codeGenerator);
   const summary = buildTrainerApprovalSummary(input.lead, {
     trainerName: trainerContact.trainer_name,
+    requestCode,
   });
-  const requestCode = generateTrainerRequestCode(input.codeGenerator);
-  const request = await repo.createApprovalRequest({
+  const { request, lead } = await repo.createApprovalRequestWithLeadUpdate({
     lead_id: input.lead.id,
     trainer_id: trainerId,
     request_code: requestCode,
     expires_at: input.expiresAt,
+    summary_for_trainer: summary,
   });
-  const lead = await repo.updateLead(
-    input.lead.id,
-    createAwaitingTrainerApprovalPatch(summary),
-  );
 
   return {
     kind: "request_created",
@@ -209,12 +239,19 @@ export async function handleTrainerApprovalDecision(
   repo: HandleTrainerApprovalRepo,
   input: {
     commandText: string;
+    senderPhone: string;
     decidedAt: string;
     decisionMessageId: string;
   },
 ): Promise<
-  | { kind: "invalid" }
-  | { kind: "unknown_request"; requestCode: string }
+  | { kind: "invalid_command" }
+  | { kind: "unknown_code"; requestCode: string }
+  | { kind: "expired_request"; requestCode: string }
+  | {
+      kind: "already_decided";
+      requestCode: string;
+      status: Exclude<SmsTrainerApprovalRequestRecord["status"], "pending">;
+    }
   | {
       kind: "approved" | "rejected";
       request: SmsTrainerApprovalRequestRecord;
@@ -224,31 +261,50 @@ export async function handleTrainerApprovalDecision(
   const parsed = parseTrainerApprovalCommand(input.commandText);
 
   if (parsed.kind === "invalid") {
-    return parsed;
+    return { kind: "invalid_command" };
   }
 
-  const request = await repo.findPendingRequestByCode(parsed.requestCode);
+  const senderPhone =
+    normalizePhoneNumber(input.senderPhone) ?? input.senderPhone.trim();
+  const lookup = await repo.findDecisionRequest({
+    requestCode: parsed.requestCode,
+    senderPhone,
+  });
 
-  if (!request) {
+  if (lookup.kind === "unknown_code") {
     return {
-      kind: "unknown_request",
+      kind: "unknown_code",
       requestCode: parsed.requestCode,
     };
   }
 
+  if (lookup.kind === "expired_request") {
+    return {
+      kind: "expired_request",
+      requestCode: parsed.requestCode,
+    };
+  }
+
+  if (lookup.kind === "already_decided") {
+    return {
+      kind: "already_decided",
+      requestCode: parsed.requestCode,
+      status: lookup.request.status,
+    };
+  }
+
   const decision = parsed.kind === "approve" ? "approved" : "rejected";
-  const updatedRequest = await repo.updateApprovalRequest(request.id, {
-    status: decision,
-    decided_at: input.decidedAt,
-    decision_message_id: input.decisionMessageId,
-  });
-  const lead = await repo.updateLead(request.lead_id, {
-    status: decision,
+  const { request, lead } = await repo.applyDecision({
+    requestId: lookup.request.id,
+    leadId: lookup.request.lead_id,
+    decision,
+    decidedAt: input.decidedAt,
+    decisionMessageId: input.decisionMessageId,
   });
 
   return {
     kind: decision,
-    request: updatedRequest,
+    request,
     lead,
   };
 }
