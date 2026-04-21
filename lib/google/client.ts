@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { GoogleCalendarAttendee } from "@/lib/google/calendar-attendees";
 import { getGoogleCalendarConfig } from "@/lib/google/config";
 import {
   type TrainerCalendarConnection,
@@ -34,6 +35,7 @@ type GoogleFreeBusyResponse = {
 };
 
 type GoogleCalendarEventResponse = {
+  attendees?: GoogleCalendarAttendee[];
   id?: string;
 };
 
@@ -89,6 +91,19 @@ export async function fetchPrimaryGoogleCalendarMetadataFromAccessToken(
   );
 }
 
+export async function getGoogleCalendarEvent(
+  connection: TrainerCalendarConnection,
+  eventId: string,
+) {
+  const accessToken = await ensureFreshGoogleAccessToken(connection);
+  const calendarId = connection.google_calendar_id || "primary";
+
+  return authorizedGoogleRequest<GoogleCalendarEventResponse>(
+    accessToken,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+  );
+}
+
 export async function getGoogleCalendarBusyIntervals(
   connection: TrainerCalendarConnection,
   timeMin: string,
@@ -122,6 +137,7 @@ export async function getGoogleCalendarBusyIntervals(
 export async function upsertGoogleCalendarEvent(
   connection: TrainerCalendarConnection,
   input: {
+    attendees?: GoogleCalendarAttendee[];
     description: string;
     endTime: string;
     eventId?: string | null;
@@ -129,17 +145,21 @@ export async function upsertGoogleCalendarEvent(
     timeZone: string;
     title: string;
   },
-) {
+  ) {
   const accessToken = await ensureFreshGoogleAccessToken(connection);
   const calendarId = connection.google_calendar_id || "primary";
-  const url = input.eventId
-    ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`
-    : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+  const url = new URL(
+    input.eventId
+      ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`
+      : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+  );
+  url.searchParams.set("sendUpdates", "all");
   const body = await authorizedGoogleRequest<GoogleCalendarEventResponse>(
     accessToken,
-    url,
+    url.toString(),
     {
       body: JSON.stringify({
+        attendees: input.attendees ?? [],
         description: input.description,
         end: {
           dateTime: input.endTime,
@@ -170,15 +190,16 @@ export async function deleteGoogleCalendarEvent(
 ) {
   const accessToken = await ensureFreshGoogleAccessToken(connection);
   const calendarId = connection.google_calendar_id || "primary";
-  const response = await fetch(
+  const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-    {
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-      },
-      method: "DELETE",
-    },
   );
+  url.searchParams.set("sendUpdates", "all");
+  const response = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    method: "DELETE",
+  });
 
   if (response.status === 404 || response.status === 410) {
     return;
