@@ -2,10 +2,14 @@ import { randomUUID } from "node:crypto";
 
 type SmsIntakeLeadRecord = {
   id: string;
+  raw_phone: string;
   normalized_phone: string;
   requested_trainer_id: string | null;
+  requested_trainer_name_raw: string | null;
   client_name: string | null;
   email: string | null;
+  scheduling_preferences_text: string | null;
+  scheduling_preferences_json: Record<string, unknown>;
   status:
     | "collecting_info"
     | "awaiting_trainer_approval"
@@ -13,8 +17,20 @@ type SmsIntakeLeadRecord = {
     | "rejected"
     | "expired"
     | "needs_manual_review";
-  approved_user_id?: string | null;
-  approved_client_id?: string | null;
+  conversation_state:
+    | "needs_trainer"
+    | "needs_name"
+    | "needs_email"
+    | "needs_preferences"
+    | "ready_for_approval"
+    | "awaiting_trainer_reply";
+  summary_for_trainer: string | null;
+  last_inbound_message_id: string | null;
+  last_outbound_message_id: string | null;
+  approved_user_id: string | null;
+  approved_client_id: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type UserRecord = {
@@ -31,6 +47,9 @@ type ClientRecord = {
   trainer_id: string | null;
 };
 
+type PromotedUserRecord = Pick<UserRecord, "id" | "full_name" | "phone_number">;
+type PromotedClientRecord = Pick<ClientRecord, "id" | "trainer_id">;
+
 type LeadPromotionRepo = {
   promoteLeadAtomically(input: {
     lead_id: string;
@@ -41,8 +60,8 @@ type LeadPromotionRepo = {
   }): Promise<
     | {
         kind: "promoted";
-        user: UserRecord;
-        client: ClientRecord;
+        user: PromotedUserRecord;
+        client: PromotedClientRecord;
         lead: SmsIntakeLeadRecord;
       }
     | {
@@ -65,8 +84,8 @@ export async function promoteApprovedLead(
 ): Promise<
   | {
       kind: "promoted";
-      user: UserRecord;
-      client: ClientRecord;
+      user: PromotedUserRecord;
+      client: PromotedClientRecord;
       lead: SmsIntakeLeadRecord;
     }
   | {

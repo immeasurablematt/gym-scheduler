@@ -4,11 +4,14 @@ import { normalizePhoneNumber } from "./phone.ts";
 
 type SmsIntakeLeadRecord = {
   id: string;
+  raw_phone: string;
+  normalized_phone: string;
   requested_trainer_id: string | null;
   requested_trainer_name_raw: string | null;
   client_name: string | null;
   email: string | null;
   scheduling_preferences_text: string | null;
+  scheduling_preferences_json: Record<string, unknown>;
   status:
     | "collecting_info"
     | "awaiting_trainer_approval"
@@ -24,6 +27,12 @@ type SmsIntakeLeadRecord = {
     | "ready_for_approval"
     | "awaiting_trainer_reply";
   summary_for_trainer: string | null;
+  last_inbound_message_id: string | null;
+  last_outbound_message_id: string | null;
+  approved_user_id: string | null;
+  approved_client_id: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type SmsTrainerApprovalRequestRecord = {
@@ -40,6 +49,16 @@ type SmsTrainerApprovalRequestRecord = {
   updated_at: string;
 };
 
+type SmsTrainerApprovalRequestCreateRecord = Pick<
+  SmsTrainerApprovalRequestRecord,
+  "id" | "lead_id" | "trainer_id" | "request_code"
+>;
+
+type SmsTrainerApprovalDecisionRequestRecord = Pick<
+  SmsTrainerApprovalRequestRecord,
+  "id" | "lead_id" | "trainer_id" | "request_code" | "status"
+>;
+
 type PrepareTrainerApprovalRepo = {
   getTrainerContact(trainerId: string): Promise<{
     trainer_id: string;
@@ -53,7 +72,7 @@ type PrepareTrainerApprovalRepo = {
     expires_at: string;
     summary_for_trainer: string;
   }): Promise<{
-    request: SmsTrainerApprovalRequestRecord;
+    request: SmsTrainerApprovalRequestCreateRecord;
     lead: SmsIntakeLeadRecord;
   }>;
   updateLead(
@@ -65,18 +84,18 @@ type PrepareTrainerApprovalRepo = {
 type TrainerDecisionLookup =
   | {
       kind: "pending";
-      request: SmsTrainerApprovalRequestRecord;
+      request: SmsTrainerApprovalDecisionRequestRecord;
     }
   | {
       kind: "unknown_code";
     }
   | {
       kind: "expired_request";
-      request: SmsTrainerApprovalRequestRecord;
+      request: SmsTrainerApprovalDecisionRequestRecord;
     }
   | {
       kind: "already_decided";
-      request: SmsTrainerApprovalRequestRecord;
+      request: SmsTrainerApprovalDecisionRequestRecord;
     };
 
 type HandleTrainerApprovalRepo = {
@@ -91,7 +110,7 @@ type HandleTrainerApprovalRepo = {
     decidedAt: string;
     decisionMessageId: string;
   }): Promise<{
-    request: SmsTrainerApprovalRequestRecord;
+    request: SmsTrainerApprovalDecisionRequestRecord;
     lead: SmsIntakeLeadRecord;
   }>;
 };
@@ -174,7 +193,7 @@ export async function prepareTrainerApprovalRequest(
     }
   | {
       kind: "request_created";
-      request: SmsTrainerApprovalRequestRecord;
+      request: SmsTrainerApprovalRequestCreateRecord;
       lead: SmsIntakeLeadRecord;
       trainerPhone: string;
       summary: string;
@@ -254,7 +273,7 @@ export async function handleTrainerApprovalDecision(
     }
   | {
       kind: "approved" | "rejected";
-      request: SmsTrainerApprovalRequestRecord;
+      request: SmsTrainerApprovalDecisionRequestRecord;
       lead: SmsIntakeLeadRecord;
     }
 > {
@@ -289,7 +308,10 @@ export async function handleTrainerApprovalDecision(
     return {
       kind: "already_decided",
       requestCode: parsed.requestCode,
-      status: lookup.request.status,
+      status: lookup.request.status as Exclude<
+        SmsTrainerApprovalRequestRecord["status"],
+        "pending"
+      >,
     };
   }
 

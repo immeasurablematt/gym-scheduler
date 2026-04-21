@@ -20,32 +20,13 @@ import {
 } from "./trainer-approval.ts";
 import { buildDefaultReceptionistRunner } from "./receptionist-runner.ts";
 import { resolveTrainerName } from "./trainer-match.ts";
+import type {
+  SmsKnownClientContext,
+  SmsTrainerPhoneContext,
+} from "./client-directory.ts";
 import type { TwilioFormPostParams } from "./twilio-webhook-primitives.ts";
-type KnownClientContext = {
-  client: {
-    id: string;
-    trainer_id: string | null;
-  };
-  clientUser: {
-    id: string;
-    phone_number: string | null;
-  };
-  normalizedPhone: string;
-  trainer: {
-    id: string;
-    user_id: string;
-  };
-  trainerUser: {
-    id: string;
-    phone_number: string | null;
-  } | null;
-};
-
-type TrainerPhoneActor = {
-  id: string;
-  name: string;
-  normalizedPhone: string;
-};
+type KnownClientContext = SmsKnownClientContext;
+type TrainerPhoneActor = SmsTrainerPhoneContext;
 
 type PhoneActor =
   | {
@@ -818,6 +799,7 @@ function createDefaultContinueIntakeDeps(): ContinueIntakeConversationDeps {
                   lead_id: string;
                   trainer_id: string;
                   request_code: string;
+                  status: "approved" | "rejected";
                 },
                 lead,
               };
@@ -883,6 +865,7 @@ function createDefaultTrainerApprovalDeps(): TrainerApprovalConversationDeps {
                   lead_id: string;
                   trainer_id: string;
                   request_code: string;
+                  status: "approved" | "rejected";
                 },
                 lead,
               };
