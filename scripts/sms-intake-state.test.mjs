@@ -52,6 +52,12 @@ test("isLeadReadyForTrainerApproval only accepts complete leads", () => {
 
 test("hasUsefulSchedulingPreferences rejects vague timing answers", () => {
   assert.equal(hasUsefulSchedulingPreferences("weekday evenings after 6pm"), true);
+  assert.equal(hasUsefulSchedulingPreferences("weekdays after 4 is best"), true);
+  assert.equal(hasUsefulSchedulingPreferences("tuesdays and thursdays work best"), true);
+  assert.equal(
+    hasUsefulSchedulingPreferences("flexible, but weekdays after 4 is best"),
+    true,
+  );
   assert.equal(hasUsefulSchedulingPreferences("whenever"), false);
   assert.equal(hasUsefulSchedulingPreferences("not sure"), false);
   assert.equal(hasUsefulSchedulingPreferences("depends"), false);
@@ -67,6 +73,17 @@ test("resolveTrainerName resolves an allowed trainer by name or alias", () => {
   const result = resolveTrainerName("Coach Maya", [
     { id: "trainer-1", name: "Maya", aliases: ["coach maya", "maya coach"] },
     { id: "trainer-2", name: "Ben", aliases: ["coach ben"] },
+  ]);
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    trainer: { id: "trainer-1", name: "Maya", aliases: ["coach maya", "maya coach"] },
+  });
+});
+
+test("resolveTrainerName tolerates light punctuation noise", () => {
+  const result = resolveTrainerName("Maya?", [
+    { id: "trainer-1", name: "Maya", aliases: ["coach maya", "maya coach"] },
   ]);
 
   assert.deepEqual(result, {

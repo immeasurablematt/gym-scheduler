@@ -30,7 +30,7 @@ const TIME_HINT_PATTERNS = [
   /\b\d{1,2}\s*(?:am|pm)\b/i,
   /\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/i,
   /\b(?:before|after)\s+\d{1,2}\b/i,
-  /\b(?:morning|afternoon|evening|night|weekend|weekday|weekdays|weekends|mon|tue|wed|thu|fri|sat|sun)(?:s)?\b/i,
+  /\b(?:morning|afternoon|evening|night|weekend|weekday|weekdays|weekends|mon(?:day)?s?|tue(?:sday)?s?|wed(?:nesday)?s?|thu(?:rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)\b/i,
 ];
 
 export function isValidIntakeEmail(email: string | null | undefined): boolean {
@@ -52,11 +52,17 @@ export function hasUsefulSchedulingPreferences(
     return false;
   }
 
+  const hasTimeHint = TIME_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
+
+  if (hasTimeHint) {
+    return true;
+  }
+
   if (VAGUE_PREFERENCE_PHRASES.some((phrase) => normalized.includes(phrase))) {
     return false;
   }
 
-  return TIME_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
+  return false;
 }
 
 export function getNextIntakeConversationState(

@@ -60,5 +60,12 @@ export function resolveTrainerName(
 }
 
 function normalizeTrainerName(value: string | null | undefined): string {
-  return value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim() ?? ""
+  );
 }
