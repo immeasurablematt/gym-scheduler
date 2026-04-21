@@ -270,6 +270,127 @@ test("continueIntakeConversation creates a new lead and starts intake for an unk
   ]);
 });
 
+test("continueIntakeConversation keeps the intake happy path when the receptionist agent returns structured output", async () => {
+  let persistedUpdates = null;
+
+  const result = await continueIntakeConversation(
+    {
+      body: "I'm Alex and evenings are best",
+      fromPhone: "+16475550101",
+      inboundMessageId: "inbound-openai-happy-path",
+      lead: createLead({
+        requested_trainer_name_raw: "Maya",
+        requested_trainer_id: "trainer-1",
+        conversation_state: "needs_name",
+      }),
+    },
+    {
+      async listTrainerCandidates() {
+        return [{ id: "trainer-1", name: "Maya" }];
+      },
+      async listRecentTranscriptByPhone() {
+        return [{ direction: "inbound", body: "I'm Alex and evenings are best" }];
+      },
+      async runReceptionistAgent() {
+        return {
+          confidence_flags: ["provider:ok"],
+          follow_up_question: "What is your email address?",
+          needs_follow_up: true,
+          preference_json: { preferred_time: "evenings" },
+          preference_summary: "evenings",
+          resolved_fields: {
+            client_name: "Alex",
+            scheduling_preferences_text: "evenings",
+          },
+          summary_text: "Alex wants evenings.",
+        };
+      },
+      async persistValidatedLeadUpdates({ lead, updates }) {
+        persistedUpdates = updates;
+
+        return {
+          lead: {
+            ...lead,
+            client_name: updates.client_name,
+            scheduling_preferences_text: updates.scheduling_preferences_text,
+            scheduling_preferences_json: updates.scheduling_preferences_json,
+            conversation_state: "needs_email",
+          },
+          persistedFields: ["client_name", "scheduling_preferences_text"],
+        };
+      },
+      async createOrResumeIntakeLead() {
+        throw new Error("should not create a second lead");
+      },
+      async prepareTrainerApprovalRequest() {
+        throw new Error("lead is not ready for approval yet");
+      },
+    },
+  );
+
+  assert.deepEqual(persistedUpdates, {
+    client_name: "Alex",
+    scheduling_preferences_text: "evenings",
+    scheduling_preferences_json: { preferred_time: "evenings" },
+  });
+  assert.deepEqual(result.messages, [
+    {
+      body: "What is the best email address to reach you at?",
+      toPhone: "+16475550101",
+    },
+  ]);
+});
+
+test("continueIntakeConversation uses the default fallback runner wiring when OPENAI_API_KEY is missing", async () => {
+  const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "";
+
+  try {
+    const result = await continueIntakeConversation(
+      {
+        body: "Hi there",
+        fromPhone: "+16475550101",
+        inboundMessageId: "inbound-default-runner-fallback",
+        lead: createLead({
+          requested_trainer_name_raw: "Maya",
+          requested_trainer_id: "trainer-1",
+          conversation_state: "needs_name",
+        }),
+      },
+      {
+        async listTrainerCandidates() {
+          return [{ id: "trainer-1", name: "Maya" }];
+        },
+        async listRecentTranscriptByPhone() {
+          return [];
+        },
+        async persistValidatedLeadUpdates({ lead }) {
+          return {
+            lead,
+            persistedFields: [],
+          };
+        },
+        async prepareTrainerApprovalRequest() {
+          throw new Error("lead is not ready for approval yet");
+        },
+      },
+    );
+
+    assert.deepEqual(result.messages, [
+      {
+        body: "What is your full name?",
+        toPhone: "+16475550101",
+      },
+    ]);
+  } finally {
+    if (originalOpenAiApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
+  }
+});
+
 test("buildTrainerApprovalConversation returns retry messaging for invalid and unknown approval codes", async () => {
   const invalid = await buildTrainerApprovalConversation(
     {

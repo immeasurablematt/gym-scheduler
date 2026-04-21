@@ -18,6 +18,7 @@ import {
   handleTrainerApprovalDecision as handleTrainerApprovalDecisionHelper,
   prepareTrainerApprovalRequest as prepareTrainerApprovalRequestHelper,
 } from "./trainer-approval.ts";
+import { buildDefaultReceptionistRunner } from "./receptionist-runner.ts";
 import { resolveTrainerName } from "./trainer-match.ts";
 import type { TwilioFormPostParams } from "./twilio-webhook-primitives.ts";
 type KnownClientContext = {
@@ -739,6 +740,8 @@ function createDefaultRouteDeps(): RouteInboundSmsDeps {
 }
 
 function createDefaultContinueIntakeDeps(): ContinueIntakeConversationDeps {
+  const defaultReceptionistRunner = buildDefaultReceptionistRunner();
+
   return {
     async createOrResumeIntakeLead(input) {
       return createOrResumeIntakeLeadHelper(
@@ -766,7 +769,8 @@ function createDefaultContinueIntakeDeps(): ContinueIntakeConversationDeps {
     },
     listTrainerCandidates: listTrainerCandidatesDefault,
     listRecentTranscriptByPhone: listRecentTranscriptByPhoneDefault,
-    runReceptionistAgent: (input) => runReceptionistAgentHelper(input),
+    runReceptionistAgent: (input) =>
+      runReceptionistAgentHelper(input, defaultReceptionistRunner),
     async persistValidatedLeadUpdates(input) {
       return persistValidatedLeadUpdatesHelper(
         {
