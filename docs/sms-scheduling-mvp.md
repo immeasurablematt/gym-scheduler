@@ -7,12 +7,16 @@ calendar sync path.
 
 ### In scope
 
-- Known existing clients only
-- Sender phone number must map to an existing client profile
+- Known existing clients plus new unknown-phone intake leads
+- Sender phone number can either map to an approved client profile or start a receptionist intake flow
 - Each client books only with their assigned trainer
 - SMS can request availability, or text a specific requested time like `Monday at 2`
 - If that exact requested slot is available, the app auto-books it immediately
 - If that exact requested slot is unavailable, the app replies with up to 3 numbered alternatives
+- New leads must collect trainer, name, email, and scheduling preferences before booking is unlocked
+- Trainer approval happens by SMS with `APPROVE <code>` or `REJECT <code>`
+- Approved leads are promoted into real `users` and `clients` rows without requiring portal sign-in
+- SMS can request availability and book one of the latest offered slots
 - Explicit `Cancel` and `Reschedule` flows remain unchanged
 - Successful booking writes a real `sessions` row and `session_changes` row
 - Booking, reschedule, and cancel syncs include the client as a Google Calendar attendee when the trainer has a connected calendar and the client has a valid email address
@@ -24,12 +28,23 @@ calendar sync path.
 
 1. Twilio posts an inbound SMS webhook to the app.
 2. The route verifies the `X-Twilio-Signature`, reserves the `MessageSid`, and returns an empty TwiML response immediately.
-3. After the response is flushed, the app logs the inbound message and resolves the sender phone number to a client and trainer.
-4. Availability requests and exact free-text time requests generate slots from the trainer's availability templates, minus blocked times, existing session conflicts, and live Google Calendar busy time.
-5. If a free-text request matches an exact open slot, the app books it immediately and sends the normal booking confirmation SMS.
-6. If a free-text request does not match an exact open slot, the app stores up to three upcoming alternatives as an offer set and sends a numbered SMS reply.
-7. A client reply of `1`, `2`, or `3` books only one of the latest active offered slots.
-8. Booking conflicts return a clean retry message instead of double-booking.
+3. After the response is flushed, the app logs the inbound message and resolves the sender phone number into one of four lanes:
+   - known approved client
+   - active intake lead
+   - trainer approval reply
+   - new unknown sender
+4. Known approved clients stay on the existing deterministic booking, reschedule, and cancel flow.
+5. On the known-client path, availability requests and exact free-text time requests generate slots from the trainer's availability templates, minus blocked times, existing session conflicts, and live Google Calendar busy time.
+6. If a free-text request matches an exact open slot, the app books it immediately and sends the normal booking confirmation SMS. If the exact requested slot is unavailable, the app stores up to three upcoming alternatives as an offer set and sends a numbered SMS reply.
+7. Unknown or active intake senders stay on the receptionist lane until the app has:
+   - a resolved trainer
+   - client name
+   - valid email
+   - useful scheduling preferences
+8. Once the intake lead is complete, the app creates a trainer approval request, sends the trainer a summary with a short code, and blocks booking until the trainer replies.
+9. A trainer reply of `APPROVE <code>` or `REJECT <code>` is handled deterministically by code plus trainer sender phone.
+10. On approval, the app promotes the lead into real `users` and `clients` rows and the phone number starts routing through the normal known-client scheduling path.
+11. Booking conflicts and intake setup conflicts return clean retry or manual-follow-up messages instead of partial state.
 
 ### Twilio webhook readiness
 
@@ -96,8 +111,10 @@ If the signed `POST` returns `403`, the webhook URL or auth token does not match
 3. Verify `TWILIO_WEBHOOK_URL` matches the exact public webhook URL Twilio will call, ending in `/api/twilio/inbound`.
 4. Verify the Twilio phone number webhook points at that same URL.
 5. Run the smoke helper until it reports both the `405` GET and the `400 Missing MessageSid` POST.
-6. Send one real SMS from a client phone number that already exists in Supabase.
-7. Watch the app logs and Supabase tables for one inbound `sms_messages` row and one outbound reply.
+6. Send one real SMS from:
+   - an unknown phone number if you are verifying the receptionist intake flow
+   - or an existing approved client phone if you are only verifying known-client scheduling
+7. Watch the app logs and Supabase tables for one inbound `sms_messages` row and at least one outbound reply.
 
 ### Supabase additions
 
@@ -105,6 +122,10 @@ If the signed `POST` returns `403`, the webhook URL or auth token does not match
   - Deduplicates inbound Twilio events by provider and event key
 - `sms_messages`
   - Logs inbound and outbound message bodies, phone numbers, Twilio identifiers, status, and linked client/trainer context
+- `sms_intake_leads`
+  - Stores unknown-phone lead state through intake, trainer approval, and promotion/manual-review outcomes
+- `sms_trainer_approval_requests`
+  - Stores trainer-facing approval request codes, status, and decision timestamps
 - `trainer_calendar_connections`
   - Stores per-trainer Google OAuth tokens and selected calendar metadata
 - `calendar_sync_jobs`
@@ -119,6 +140,20 @@ If the signed `POST` returns `403`, the webhook URL or auth token does not match
 ### Behavior assumptions
 
 - Phone matching uses normalized E.164-style strings, with US/Canada 10-digit numbers normalized to `+1XXXXXXXXXX`
-- Booking confirmation is intentionally deterministic for MVP: clients book by replying with the number of a recent offered slot, or by texting a specific exact time that the app can book immediately
+- The receptionist lane is deterministic at the state-transition boundary:
+  - trainer resolution must be validated
+  - approval commands must come from the trainer phone
+  - promotion must fail closed into manual review instead of partial creation
+- Booking is blocked for unapproved intake leads with:
+  - `I can help get you set up first. Once your trainer approves, I can help with scheduling by text.`
+- Trainer approval SMS uses:
+  - `APPROVE <code>`
+  - `REJECT <code>`
+- Manual review is expected when:
+  - the trainer has no reachable phone
+  - the trainer lookup returns a mismatched record
+  - promotion hits a duplicate identity conflict
+- Booking confirmation is intentionally deterministic for MVP: approved clients book by replying with the number of a recent offered slot, or by texting a specific exact time that the app can book immediately
+- If the exact requested time is unavailable, the app returns up to three numbered alternatives instead of silently failing
 - Availability is sourced from `availability_templates`; if no active template exists, the app returns a setup-needed response instead of inventing hours
 - SMS-created sessions use the default session type and duration from app config and add `Booked via SMS.` to session notes

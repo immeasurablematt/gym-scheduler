@@ -71,7 +71,7 @@ export async function sendTwilioSms({
 
     const status = mapTwilioStatus(responseBody?.status);
 
-    await logSmsMessage({
+    return await logSmsMessage({
       account_sid: config.accountSid,
       audience,
       body,

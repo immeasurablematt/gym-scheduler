@@ -37,9 +37,22 @@ export type SmsClientLookupResult =
       value: SmsKnownClientContext;
     };
 
+export type SmsTrainerPhoneContext = {
+  id: string;
+  name: string;
+  normalizedPhone: string;
+};
+
+export type SmsPhoneActorResult =
+  | SmsClientLookupResult
+  | {
+      kind: "trainer";
+      trainer: SmsTrainerPhoneContext;
+    };
+
 export async function resolveSmsClientContextByPhone(
   rawPhoneNumber: string | null | undefined,
-) : Promise<SmsClientLookupResult> {
+): Promise<SmsClientLookupResult> {
   const normalizedPhone = normalizePhoneNumber(rawPhoneNumber);
 
   if (!normalizedPhone) {
@@ -138,4 +151,89 @@ export async function resolveSmsClientContextByPhone(
       trainerUser,
     },
   };
+}
+
+export async function resolveSmsPhoneActorByPhone(
+  rawPhoneNumber: string | null | undefined,
+): Promise<SmsPhoneActorResult> {
+  const clientContext = await resolveSmsClientContextByPhone(rawPhoneNumber);
+
+  if (clientContext.kind !== "unknown_sender") {
+    return clientContext;
+  }
+
+  if (!clientContext.normalizedPhone) {
+    return clientContext;
+  }
+
+  const trainers = await listTrainerDirectory();
+  const trainer = trainers.find(
+    (candidate) => candidate.normalizedPhone === clientContext.normalizedPhone,
+  );
+
+  if (!trainer) {
+    return clientContext;
+  }
+
+  return {
+    kind: "trainer",
+    trainer: {
+      id: trainer.id,
+      name: trainer.name,
+      normalizedPhone: trainer.normalizedPhone,
+    },
+  };
+}
+
+export async function listSmsTrainerCandidates() {
+  const trainers = await listTrainerDirectory();
+
+  return trainers.map((trainer) => ({
+    id: trainer.id,
+    name: trainer.name,
+    aliases: [],
+  }));
+}
+
+async function listTrainerDirectory() {
+  const supabase = createServerSupabaseClient();
+  const { data: trainers, error: trainersError } = await supabase
+    .from("trainers")
+    .select("*");
+
+  if (trainersError) {
+    throw new Error(trainersError.message);
+  }
+
+  const userIds = (trainers ?? []).map((trainer) => trainer.user_id);
+
+  if (userIds.length === 0) {
+    return [];
+  }
+
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("*")
+    .in("id", userIds);
+
+  if (usersError) {
+    throw new Error(usersError.message);
+  }
+
+  return (trainers ?? [])
+    .map((trainer) => {
+      const trainerUser = (users ?? []).find((user) => user.id === trainer.user_id);
+      const normalizedPhone = normalizePhoneNumber(trainerUser?.phone_number);
+
+      if (!trainerUser || !normalizedPhone) {
+        return null;
+      }
+
+      return {
+        id: trainer.id,
+        name: trainerUser.full_name,
+        normalizedPhone,
+      };
+    })
+    .filter((trainer): trainer is SmsTrainerPhoneContext => trainer !== null);
 }

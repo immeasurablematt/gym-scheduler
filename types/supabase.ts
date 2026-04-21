@@ -346,6 +346,109 @@ export type Database = {
           updated_at?: string
         }
       }
+      sms_intake_leads: {
+        Row: {
+          id: string
+          raw_phone: string
+          normalized_phone: string
+          requested_trainer_name_raw: string | null
+          requested_trainer_id: string | null
+          client_name: string | null
+          email: string | null
+          scheduling_preferences_text: string | null
+          scheduling_preferences_json: Json
+          status: 'collecting_info' | 'awaiting_trainer_approval' | 'approved' | 'rejected' | 'expired' | 'needs_manual_review'
+          conversation_state: 'needs_trainer' | 'needs_name' | 'needs_email' | 'needs_preferences' | 'ready_for_approval' | 'awaiting_trainer_reply'
+          summary_for_trainer: string | null
+          last_inbound_message_id: string | null
+          last_outbound_message_id: string | null
+          approved_user_id: string | null
+          approved_client_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          raw_phone: string
+          normalized_phone: string
+          requested_trainer_name_raw?: string | null
+          requested_trainer_id?: string | null
+          client_name?: string | null
+          email?: string | null
+          scheduling_preferences_text?: string | null
+          scheduling_preferences_json?: Json
+          status?: 'collecting_info' | 'awaiting_trainer_approval' | 'approved' | 'rejected' | 'expired' | 'needs_manual_review'
+          conversation_state?: 'needs_trainer' | 'needs_name' | 'needs_email' | 'needs_preferences' | 'ready_for_approval' | 'awaiting_trainer_reply'
+          summary_for_trainer?: string | null
+          last_inbound_message_id?: string | null
+          last_outbound_message_id?: string | null
+          approved_user_id?: string | null
+          approved_client_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          raw_phone?: string
+          normalized_phone?: string
+          requested_trainer_name_raw?: string | null
+          requested_trainer_id?: string | null
+          client_name?: string | null
+          email?: string | null
+          scheduling_preferences_text?: string | null
+          scheduling_preferences_json?: Json
+          status?: 'collecting_info' | 'awaiting_trainer_approval' | 'approved' | 'rejected' | 'expired' | 'needs_manual_review'
+          conversation_state?: 'needs_trainer' | 'needs_name' | 'needs_email' | 'needs_preferences' | 'ready_for_approval' | 'awaiting_trainer_reply'
+          summary_for_trainer?: string | null
+          last_inbound_message_id?: string | null
+          last_outbound_message_id?: string | null
+          approved_user_id?: string | null
+          approved_client_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sms_trainer_approval_requests: {
+        Row: {
+          id: string
+          lead_id: string
+          trainer_id: string
+          request_code: string
+          status: 'pending' | 'approved' | 'rejected' | 'expired'
+          outbound_message_id: string | null
+          decision_message_id: string | null
+          decided_at: string | null
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id: string
+          trainer_id: string
+          request_code: string
+          status?: 'pending' | 'approved' | 'rejected' | 'expired'
+          outbound_message_id?: string | null
+          decision_message_id?: string | null
+          decided_at?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string
+          trainer_id?: string
+          request_code?: string
+          status?: 'pending' | 'approved' | 'rejected' | 'expired'
+          outbound_message_id?: string | null
+          decision_message_id?: string | null
+          decided_at?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       session_changes: {
         Row: {
           id: string
@@ -698,6 +801,21 @@ export type Database = {
       sms_message_kind: 'conversation' | 'book' | 'reschedule' | 'cancel'
       sms_offer_status: 'pending' | 'booked' | 'expired' | 'conflicted'
       sms_webhook_status: 'received' | 'processed' | 'failed'
+      sms_intake_status:
+        | 'collecting_info'
+        | 'awaiting_trainer_approval'
+        | 'approved'
+        | 'rejected'
+        | 'expired'
+        | 'needs_manual_review'
+      sms_intake_conversation_state:
+        | 'needs_trainer'
+        | 'needs_name'
+        | 'needs_email'
+        | 'needs_preferences'
+        | 'ready_for_approval'
+        | 'awaiting_trainer_reply'
+      sms_trainer_approval_status: 'pending' | 'approved' | 'rejected' | 'expired'
     }
   }
 }
