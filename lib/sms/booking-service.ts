@@ -1,6 +1,7 @@
 import "server-only";
 
 import { TrainerCalendarUnavailableError } from "@/lib/google/client";
+import { assessClientInviteEligibility } from "@/lib/google/client-invite-eligibility";
 import { syncSessionToCalendar } from "@/lib/google/calendar-sync";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
@@ -33,6 +34,10 @@ import type { Database, Json } from "@/types/supabase";
 type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 
 export type SmsBookingOutcome =
+  | {
+      kind: "invite_email_required";
+      replyBody: string;
+    }
   | {
       kind: "booked";
       replyBody: string;
@@ -238,6 +243,17 @@ export async function bookSmsOfferSelection(
       kind: "invalid_selection",
       replyBody:
         "Reply with 1, 2, or 3 from the most recent options and I'll book that slot.",
+    };
+  }
+
+  const inviteEligibility = assessClientInviteEligibility(
+    context.clientUser.email,
+  );
+
+  if (inviteEligibility.kind === "ineligible") {
+    return {
+      kind: "invite_email_required",
+      replyBody: inviteEligibility.smsBookReply,
     };
   }
 
