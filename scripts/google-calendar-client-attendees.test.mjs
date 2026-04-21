@@ -90,6 +90,49 @@ test("getGoogleCalendarEvent hits the event URL with auth", async () => {
   );
 });
 
+test("getGoogleCalendarEvent returns null when the remote event is missing", async () => {
+  const requests = [];
+  global.fetch = async (url, init = {}) => {
+    requests.push({ init, url: String(url) });
+
+    if (String(url).includes("/token")) {
+      return Response.json({ access_token: "token", expires_in: 3600 });
+    }
+
+    return Response.json(
+      {
+        error: {
+          message: "Not found",
+        },
+      },
+      { status: 404 },
+    );
+  };
+
+  const { getGoogleCalendarEvent } = await import("../lib/google/client.ts");
+
+  const event = await getGoogleCalendarEvent(
+    {
+      access_token: "token",
+      calendar_time_zone: "America/Toronto",
+      google_calendar_id: "primary",
+      provider: "google",
+      refresh_token: "refresh",
+      sync_enabled: true,
+      token_expires_at: new Date(Date.now() + 300_000).toISOString(),
+      trainer_id: "trainer-1",
+    },
+    "event-404",
+  );
+
+  assert.equal(event, null);
+  const request = requests.at(-1);
+  assert.equal(
+    request.url,
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events/event-404",
+  );
+});
+
 test("upsertGoogleCalendarEvent omits attendees on patch when not provided", async () => {
   const requests = [];
   global.fetch = async (url, init = {}) => {

@@ -97,11 +97,34 @@ export async function getGoogleCalendarEvent(
 ) {
   const accessToken = await ensureFreshGoogleAccessToken(connection);
   const calendarId = connection.google_calendar_id || "primary";
-
-  return authorizedGoogleRequest<GoogleCalendarEventResponse>(
-    accessToken,
+  const response = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    },
   );
+
+  if (response.status === 404 || response.status === 410) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as
+      | {
+          error?: {
+            message?: string;
+          };
+        }
+      | null;
+    throw new TrainerCalendarUnavailableError(
+      errorBody?.error?.message ??
+        `Google Calendar request failed with status ${response.status}.`,
+    );
+  }
+
+  return (await response.json()) as GoogleCalendarEventResponse;
 }
 
 export async function getGoogleCalendarBusyIntervals(
