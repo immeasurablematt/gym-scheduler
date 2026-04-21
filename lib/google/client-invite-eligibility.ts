@@ -1,4 +1,4 @@
-import { hasInviteSuitableEmail } from "./calendar-attendees.ts";
+import { hasInviteSuitableEmail } from "@/lib/google/calendar-attendees";
 
 export type ClientInviteEligibility =
   | {

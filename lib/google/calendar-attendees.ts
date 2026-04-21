@@ -4,7 +4,9 @@ export type GoogleCalendarAttendee = {
 
 const INVITE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function hasInviteSuitableEmail(email: string | null | undefined) {
+export function hasInviteSuitableEmail(
+  email: string | null | undefined,
+): email is string {
   if (typeof email !== "string") {
     return false;
   }
