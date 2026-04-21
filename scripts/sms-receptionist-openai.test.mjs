@@ -76,6 +76,41 @@ test("createOpenAiReceptionistRunner maps structured OpenAI output into the prov
   });
 });
 
+test("createOpenAiReceptionistRunner includes the required intake guardrails in the system prompt", async () => {
+  let systemPrompt = "";
+  const runner = createOpenAiReceptionistRunner({
+    apiKey: "test-key",
+    createClient() {
+      return {
+        responses: {
+          async create(request) {
+            systemPrompt = request.input[0].content[0].text;
+            return {
+              output_text: JSON.stringify({
+                resolved_fields: {},
+                follow_up_question: "What is your email address?",
+                summary_text: "Need an email before continuing.",
+                preference_summary: "",
+                preference_json: {},
+                needs_follow_up: true,
+                confidence_score: 0.84,
+              }),
+            };
+          },
+        },
+      };
+    },
+  });
+
+  await runner(createInput());
+
+  assert.match(systemPrompt, /leave email unset and ask for it directly/i);
+  assert.match(systemPrompt, /preserve vague preferences/i);
+  assert.match(systemPrompt, /do not interpret booking requests before approval/i);
+  assert.match(systemPrompt, /do not silently map trainer ids/i);
+  assert.match(systemPrompt, /confidence_score.*0 to 1/i);
+});
+
 test("createOpenAiReceptionistRunner returns null when the provider response is malformed", async () => {
   const runner = createOpenAiReceptionistRunner({
     apiKey: "test-key",
@@ -85,6 +120,34 @@ test("createOpenAiReceptionistRunner returns null when the provider response is 
           async create() {
             return {
               output_text: "{\"resolved_fields\":{\"client_name\":42}}",
+            };
+          },
+        },
+      };
+    },
+  });
+
+  const result = await runner(createInput());
+  assert.equal(result, null);
+});
+
+test("createOpenAiReceptionistRunner returns null when confidence_score is outside the expected range", async () => {
+  const runner = createOpenAiReceptionistRunner({
+    apiKey: "test-key",
+    createClient() {
+      return {
+        responses: {
+          async create() {
+            return {
+              output_text: JSON.stringify({
+                resolved_fields: {},
+                follow_up_question: "What is your email address?",
+                summary_text: "Need an email before continuing.",
+                preference_summary: "",
+                preference_json: {},
+                needs_follow_up: true,
+                confidence_score: 42,
+              }),
             };
           },
         },
@@ -128,4 +191,6 @@ test("createOpenAiReceptionistRunner sends the current lead snapshot, transcript
   assert.match(requestText, /"next_missing_field":"email"/);
   assert.match(requestText, /"requested_trainer_name_raw":"Maya"/);
   assert.match(requestText, /"allowed_trainers"/);
+  assert.match(requestText, /"recent_sms_transcript"/);
+  assert.match(requestText, /"body":"Hey, I'm Alex\. I want Maya\. Evenings work best\."/);
 });

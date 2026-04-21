@@ -119,10 +119,15 @@ export function createOpenAiReceptionistRunner(
 function buildSystemPrompt(): string {
   return [
     "You are an SMS intake receptionist for a gym.",
-    "Extract only structured intake details from the lead snapshot and transcript.",
+    "Extract only structured intake details directly supported by the lead snapshot and transcript.",
     "Ask at most one follow-up question when needed.",
     "Never approve, reject, create clients, or book sessions.",
-    "Never invent trainer ids.",
+    "Do not silently map trainer ids or invent trainer ids.",
+    "Do not invent trainer names.",
+    "If email is uncertain, leave email unset and ask for it directly.",
+    "If preferences are vague, preserve vague preferences in the client's own words and ask a follow-up question.",
+    "Do not interpret booking requests before approval as approval or a booking action.",
+    "Set confidence_score as a number from 0 to 1.",
     "Keep trainer names exactly as written when uncertain.",
   ].join(" ");
 }
@@ -201,7 +206,12 @@ function isUsableParsedOutput(value: unknown): value is ParsedOpenAiReceptionist
     return false;
   }
 
-  if (typeof value.confidence_score !== "number" || !Number.isFinite(value.confidence_score)) {
+  if (
+    typeof value.confidence_score !== "number" ||
+    !Number.isFinite(value.confidence_score) ||
+    value.confidence_score < 0 ||
+    value.confidence_score > 1
+  ) {
     return false;
   }
 
