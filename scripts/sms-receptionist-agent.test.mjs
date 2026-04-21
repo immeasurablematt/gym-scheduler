@@ -67,15 +67,15 @@ test("runReceptionistAgent strips unsafe action fields on the normal provider pa
       client_name: "Alex Client",
       email: "alex@example.com",
       requested_trainer_id: "trainer-1",
-      approve_client: "yes",
-      reject_client: "no",
-      create_client: "now",
     },
     follow_up_question: "What is your email address?",
     summary_text: "Alex wants to train with Maya.",
     preference_summary: "weekday evenings",
     preference_json: { preferred_days: ["weekday"] },
     needs_follow_up: false,
+    approve_client: true,
+    reject_client: true,
+    create_client: true,
     confidence_score: 0.95,
   }));
 
