@@ -49,7 +49,7 @@ export function getSmsRuntimeConfig(): SmsRuntimeConfig {
       30,
       15,
     ),
-    timeZone: resolveSmsTimeZone(process.env.SMS_TIME_ZONE ?? process.env.TZ),
+    timeZone: resolveSmsTimeZone(process.env.SMS_TIME_ZONE),
   };
 }
 
