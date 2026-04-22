@@ -93,6 +93,33 @@ test("resolveTrainerName tolerates light punctuation noise", () => {
   });
 });
 
+test("resolveTrainerName resolves a unique first-name reply against a full trainer name", () => {
+  const result = resolveTrainerName("Gabe", [
+    { id: "trainer-1", name: "Gabe Loiselle" },
+    { id: "trainer-2", name: "Ben Smith" },
+  ]);
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    trainer: { id: "trainer-1", name: "Gabe Loiselle" },
+  });
+});
+
+test("resolveTrainerName reports ambiguity when a first-name reply matches multiple full names", () => {
+  const result = resolveTrainerName("Gabe", [
+    { id: "trainer-1", name: "Gabe Loiselle" },
+    { id: "trainer-2", name: "Gabe Martin" },
+  ]);
+
+  assert.deepEqual(result, {
+    kind: "ambiguous",
+    matches: [
+      { id: "trainer-1", name: "Gabe Loiselle" },
+      { id: "trainer-2", name: "Gabe Martin" },
+    ],
+  });
+});
+
 test("resolveTrainerName reports ambiguity instead of guessing", () => {
   const result = resolveTrainerName("Coach", [
     { id: "trainer-1", name: "Maya", aliases: ["coach"] },

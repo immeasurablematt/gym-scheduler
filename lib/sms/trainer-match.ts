@@ -34,8 +34,8 @@ export function resolveTrainerName(
   const matches = allowedTrainers.filter((trainer) => {
     const candidates = [trainer.name, ...(trainer.aliases ?? [])];
 
-    return candidates.some(
-      (value) => normalizeTrainerName(value) === normalizedCandidateName,
+    return candidates.some((value) =>
+      isTrainerNameMatch(normalizedCandidateName, normalizeTrainerName(value)),
     );
   });
 
@@ -57,6 +57,25 @@ export function resolveTrainerName(
     kind: "unknown",
     matches: [],
   };
+}
+
+function isTrainerNameMatch(
+  normalizedCandidateName: string,
+  normalizedTrainerName: string,
+): boolean {
+  if (!normalizedTrainerName) {
+    return false;
+  }
+
+  if (normalizedTrainerName === normalizedCandidateName) {
+    return true;
+  }
+
+  if (!normalizedCandidateName.includes(" ")) {
+    return normalizedTrainerName.split(" ").includes(normalizedCandidateName);
+  }
+
+  return false;
 }
 
 function normalizeTrainerName(value: string | null | undefined): string {

@@ -341,6 +341,74 @@ test("continueIntakeConversation keeps the intake happy path when the receptioni
   ]);
 });
 
+test("continueIntakeConversation accepts a unique trainer first name and moves to the next intake question", async () => {
+  let persistedTrainer = null;
+
+  const result = await continueIntakeConversation(
+    {
+      body: "Gabe",
+      fromPhone: "+16475550101",
+      inboundMessageId: "inbound-trainer-first-name",
+      lead: createLead({
+        requested_trainer_name_raw: null,
+        requested_trainer_id: null,
+        conversation_state: "needs_trainer",
+      }),
+    },
+    {
+      async listTrainerCandidates() {
+        return [{ id: "trainer-1", name: "Gabe Loiselle" }];
+      },
+      async listRecentTranscriptByPhone() {
+        return [{ direction: "inbound", body: "Gabe" }];
+      },
+      async runReceptionistAgent() {
+        return {
+          confidence_flags: ["fallback:test"],
+          follow_up_question: "Which trainer would you like to work with?",
+          needs_follow_up: true,
+          preference_json: {},
+          preference_summary: "",
+          resolved_fields: {},
+          summary_text: "Collected: trainer Gabe.",
+        };
+      },
+      async persistValidatedLeadUpdates({ lead, updates, validatedTrainer }) {
+        persistedTrainer = { updates, validatedTrainer };
+
+        return {
+          lead: {
+            ...lead,
+            requested_trainer_name_raw: updates.requested_trainer_name_raw,
+            requested_trainer_id: validatedTrainer?.id ?? null,
+            conversation_state: "needs_name",
+          },
+          persistedFields: ["requested_trainer_name_raw", "requested_trainer_id"],
+        };
+      },
+      async createOrResumeIntakeLead() {
+        throw new Error("should not create a new lead for an existing conversation");
+      },
+      async prepareTrainerApprovalRequest() {
+        throw new Error("lead is not ready for approval yet");
+      },
+    },
+  );
+
+  assert.deepEqual(persistedTrainer, {
+    updates: {
+      requested_trainer_name_raw: "Gabe",
+    },
+    validatedTrainer: { id: "trainer-1" },
+  });
+  assert.deepEqual(result.messages, [
+    {
+      body: "What is your full name?",
+      toPhone: "+16475550101",
+    },
+  ]);
+});
+
 test("continueIntakeConversation uses the default fallback runner wiring when OPENAI_API_KEY is missing", async () => {
   const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "";
