@@ -17,6 +17,7 @@ import {
   markOfferBooked,
   markOfferConflicted,
 } from "@/lib/sms/offer-service";
+import { sendTrainerSessionNotification } from "@/lib/sms/trainer-notifications";
 import {
   isSessionConflictError,
   rescheduleSessionFromOffer,
@@ -249,20 +250,32 @@ async function createSmsBookedSession(
     throw sessionError;
   }
 
-  const { error: changeError } = await supabase.from("session_changes").insert({
-    changed_by: context.trainer.user_id,
-    change_type: "created",
-    new_values: toSessionSnapshot(session as SessionRow),
-    old_values: null,
-    reason: "Booked via SMS",
-    session_id: session.id,
-  });
+  const { data: sessionChange, error: changeError } = await supabase
+    .from("session_changes")
+    .insert({
+      changed_by: context.trainer.user_id,
+      change_type: "created",
+      new_values: toSessionSnapshot(session as SessionRow),
+      old_values: null,
+      reason: "Booked via SMS",
+      session_id: session.id,
+    })
+    .select("id")
+    .single();
 
   if (changeError) {
     throw new Error(changeError.message);
   }
 
   await syncSessionToCalendar(session.id, context.trainer.id);
+  await sendTrainerSessionNotification({
+    clientId: context.client.id,
+    clientName: context.clientUser.full_name?.trim() || "Unknown client",
+    kind: "book",
+    newSlotLabel: formatSlotLabel(scheduledAt, config.timeZone),
+    sourceChangeId: sessionChange.id,
+    trainerId: context.trainer.id,
+  });
 
   return session as SessionRow;
 }

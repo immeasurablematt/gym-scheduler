@@ -20,6 +20,7 @@ import {
   createSmsOfferSet,
   expirePendingOfferSets,
 } from "@/lib/sms/offer-service";
+import { sendTrainerSessionNotification } from "@/lib/sms/trainer-notifications";
 import { formatSlotLabel } from "@/lib/sms/timezone";
 import type { Database, Json } from "@/types/supabase";
 
@@ -182,6 +183,7 @@ export async function rescheduleSessionFromOffer(
   sessionId: string,
   scheduledAt: string,
 ) {
+  const config = getSmsRuntimeConfig();
   const supabase = createServerSupabaseClient();
   const { data: existing, error: existingError } = await supabase
     .from("sessions")
@@ -219,20 +221,33 @@ export async function rescheduleSessionFromOffer(
     throw new Error("Session reschedule did not return a record.");
   }
 
-  const { error: changeError } = await supabase.from("session_changes").insert({
-    changed_by: context.trainer.user_id,
-    change_type: "rescheduled",
-    new_values: toSessionSnapshot(updated as SessionRow),
-    old_values: toSessionSnapshot(existing as SessionRow),
-    reason: "Rescheduled via SMS",
-    session_id: sessionId,
-  });
+  const { data: sessionChange, error: changeError } = await supabase
+    .from("session_changes")
+    .insert({
+      changed_by: context.trainer.user_id,
+      change_type: "rescheduled",
+      new_values: toSessionSnapshot(updated as SessionRow),
+      old_values: toSessionSnapshot(existing as SessionRow),
+      reason: "Rescheduled via SMS",
+      session_id: sessionId,
+    })
+    .select("id")
+    .single();
 
   if (changeError) {
     throw new Error(changeError.message);
   }
 
   await syncSessionToCalendar(sessionId, context.trainer.id);
+  await sendTrainerSessionNotification({
+    clientId: context.client.id,
+    clientName: context.clientUser.full_name?.trim() || "Unknown client",
+    kind: "reschedule",
+    newSlotLabel: formatSlotLabel(scheduledAt, config.timeZone),
+    oldSlotLabel: formatSlotLabel(existing.scheduled_at, config.timeZone),
+    sourceChangeId: sessionChange.id,
+    trainerId: context.trainer.id,
+  });
 
   return updated as SessionRow;
 }
@@ -383,21 +398,34 @@ async function cancelSessionBySms(
     throw new Error("Session cancellation did not return a record.");
   }
 
-  const { error: changeError } = await supabase.from("session_changes").insert({
-    changed_by: context.trainer.user_id,
-    change_type: "cancelled",
-    new_values: toSessionSnapshot(updated as SessionRow),
-    old_values: toSessionSnapshot(session),
-    reason: inboundMessageId ? "Cancelled via SMS" : "Cancelled",
-    session_id: session.id,
-  });
+  const { data: sessionChange, error: changeError } = await supabase
+    .from("session_changes")
+    .insert({
+      changed_by: context.trainer.user_id,
+      change_type: "cancelled",
+      new_values: toSessionSnapshot(updated as SessionRow),
+      old_values: toSessionSnapshot(session),
+      reason: inboundMessageId ? "Cancelled via SMS" : "Cancelled",
+      session_id: session.id,
+    })
+    .select("id")
+    .single();
 
   if (changeError) {
     throw new Error(changeError.message);
   }
 
+  const timeZone = getSmsRuntimeConfig().timeZone;
   await expirePendingOfferSets(context.client.id, context.trainer.id);
   await syncSessionToCalendar(session.id, context.trainer.id);
+  await sendTrainerSessionNotification({
+    clientId: context.client.id,
+    clientName: context.clientUser.full_name?.trim() || "Unknown client",
+    kind: "cancel",
+    slotLabel: formatSlotLabel(session.scheduled_at, timeZone),
+    sourceChangeId: sessionChange.id,
+    trainerId: context.trainer.id,
+  });
 }
 
 async function listUpcomingSessionsForClient(clientId: string, trainerId: string) {
