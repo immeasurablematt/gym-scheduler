@@ -1,5 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { hasClerkServerKeys } from '@/lib/auth'
+import {
+  hasClerkServerKeys,
+  shouldAllowMissingClerkAuthBypass,
+} from '@/lib/auth'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 
 const isProtectedRoute = createRouteMatcher([
@@ -31,6 +34,20 @@ const isWebhookRoute = createRouteMatcher([
 export default function middleware(request: NextRequest, event: NextFetchEvent) {
   // Skip Clerk entirely when the app is running in preview/open-access mode.
   if (!hasClerkServerKeys) {
+    if (
+      !shouldAllowMissingClerkAuthBypass() &&
+      (isProtectedRoute(request) || (isApiRoute(request) && !isWebhookRoute(request)))
+    ) {
+      return NextResponse.json(
+        {
+          error: 'Authentication is not configured.',
+        },
+        {
+          status: 503,
+        }
+      )
+    }
+
     return NextResponse.next()
   }
 

@@ -6,7 +6,10 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint app lib components scripts",
+    "typecheck": "tsc --noEmit --pretty false",
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --test scripts/*.test.mjs",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",

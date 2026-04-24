@@ -13,7 +13,7 @@ A comprehensive gym scheduling application for managing personal trainers and th
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 with App Router
+- **Framework**: Next.js 15 with App Router
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Clerk
 - **Payments**: Stripe
@@ -96,11 +96,22 @@ gym-scheduler/
 ## Development Commands
 
 ```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run start    # Start production server
-npm run lint     # Run ESLint
+npm run dev        # Start development server
+npm run lint       # Run ESLint on source and test files
+npm run typecheck  # Run TypeScript without emitting files
+npm test           # Run the maintained script-based regression suite
+npm run build      # Build for production
+npm run verify     # Run lint, typecheck, tests, and build
+npm run start      # Start production server
 ```
+
+`npm test` intentionally runs the stable `scripts/*.test.mjs` suite. Some older
+`lib/sms/*.test.ts` files still require a separate runner cleanup before they
+can be used as a repo-wide gate.
+
+In production, Clerk must be configured for protected routes and non-webhook API
+routes. Local and preview environments can still run in open-access mode for
+development.
 
 ## SMS And Calendar Runtime
 
