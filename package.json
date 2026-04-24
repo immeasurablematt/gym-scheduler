@@ -11,7 +11,8 @@
     "test": "node --test scripts/*.test.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "bug-sweep": "node scripts/bug-sweep.mjs",
-    "bug-sweep:dry-run": "node scripts/bug-sweep.mjs --dry-run"
+    "bug-sweep:dry-run": "node scripts/bug-sweep.mjs --dry-run",
+    "bug-sweep:auto-stash": "node scripts/bug-sweep.mjs --auto-stash-dirty-tree"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",

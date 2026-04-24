@@ -7,19 +7,26 @@ export function getReportPath({ cwd, now = new Date() }) {
 }
 
 export function formatSweepSummary({
-  branchName,
-  fixes,
-  missingChecks,
-  results,
-  unresolved,
-}) {
+    branchName,
+    fixes,
+    manualReviewNeeded,
+    missingChecks,
+    results,
+    unresolved,
+    worktreeNotes = [],
+  }) {
+  const needsManualReview = manualReviewNeeded ?? unresolved.length > 0;
+
   return [
     "# Overnight Bug Sweep",
     "",
     "## Overall Result",
-    unresolved.length === 0
+    !needsManualReview
       ? "Everything discovered by the sweep is green."
       : "Manual review is still needed before this repo is considered clean.",
+    "",
+    "## Worktree Handling",
+    formatBulletList(worktreeNotes),
     "",
     "## Branch Created",
     branchName || "None",

@@ -17,6 +17,8 @@ export {
   createSweepBranch,
   ensureCleanTree,
   hasTrackedChanges,
+  prepareWorktree,
+  restoreWorktree,
 } from "./git.mjs";
 export {
   formatSweepSummary,
