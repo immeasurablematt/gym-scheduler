@@ -103,6 +103,8 @@ npm test           # Run the maintained script-based regression suite
 npm run build      # Build for production
 npm run verify     # Run lint, typecheck, tests, and build
 npm run start      # Start production server
+npm run bug-sweep:dry-run # Inspect repo health without mutating git
+npm run bug-sweep  # Run the safe overnight bug sweep
 ```
 
 `npm test` intentionally runs the stable `scripts/*.test.mjs` suite. Some older
@@ -112,6 +114,16 @@ can be used as a repo-wide gate.
 In production, Clerk must be configured for protected routes and non-webhook API
 routes. Local and preview environments can still run in open-access mode for
 development.
+
+## Overnight Bug Sweep
+
+This repo includes a conservative overnight bug-sweep command for unattended runs.
+
+- `npm run bug-sweep:dry-run` checks the repo and writes a report without creating a branch or changing code.
+- `npm run bug-sweep` runs the same checks, creates a fresh `codex/overnight-bug-sweep-*` branch only when safe auto-fixes are available, and commits those low-risk fixes there.
+- Reports are written to `reports/bug-sweeps/`.
+
+The first version only auto-fixes lint issues. Higher-risk failures are reported for review instead of being rewritten automatically.
 
 ## SMS And Calendar Runtime
 

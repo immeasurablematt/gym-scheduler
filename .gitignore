@@ -43,6 +43,7 @@ next-env.d.ts
 
 # local tooling artifacts
 .playwright-cli/
+/reports/bug-sweeps/
 
 # clerk configuration (can include secrets)
 /.clerk/
