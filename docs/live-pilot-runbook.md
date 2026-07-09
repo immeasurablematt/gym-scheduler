@@ -1,7 +1,7 @@
 # Live Pilot Runbook
 
-This runbook is for one supervised end-to-end SMS scheduling test against the
-current live environment.
+This runbook is for one supervised end-to-end SMS receptionist and scheduling
+test against the current live environment.
 
 ## Current live assumptions
 
@@ -10,8 +10,14 @@ current live environment.
 - Google Calendar is already connected in `/dashboard/settings`.
 - The live trainer calendar connection is tied to trainer
   `11111111-1111-1111-1111-111111111111`.
+- For receptionist intake verification, use one phone number that does not
+  already exist in `users.phone_number`.
+- For trainer approval verification, use the real trainer user phone stored on
+  the approving trainer's linked `users.phone_number`.
 - The live client SMS sender is the phone number currently stored on
   `users.id = 'client-preview-1'`.
+- The client profile for `client-preview-1` has a valid email address so
+  Google Calendar invites can be sent.
 - SMS availability is currently configured for `America/Toronto`.
 - Active availability templates are currently:
   - Monday to Friday
@@ -44,6 +50,30 @@ Expected result:
    - `09:00` to `17:00`
    - `America/Toronto`
 
+## OpenAI Receptionist Check
+
+Before running the unknown-sender intake test:
+
+- confirm `OPENAI_API_KEY` is set in the active environment; without it, intake
+  still works, but the model-backed receptionist happy path is disabled
+- optionally set `SMS_RECEPTIONIST_OPENAI_MODEL` if you are not using the
+  default `gpt-5.4-mini`
+- use one intentionally messy intake conversation:
+  - trainer plus timing in one message
+  - name plus email in another
+  - one vague preference that should trigger a follow-up question
+
+Example messy intake sequence:
+
+```text
+Hi, I want to train with Maya and evenings usually work best.
+I'm Alex Client and my email is alex@example.com.
+Tuesday or Thursday after work is probably best, but I'm flexible.
+```
+
+If the OpenAI call fails or is unconfigured, the system will fall back to the
+deterministic receptionist prompts instead of breaking SMS intake.
+
 ## Important pilot caveat
 
 The current environment is still running in preview mode without Clerk server
@@ -56,7 +86,103 @@ URL until auth is enabled.
 
 ## Supervised flow
 
-### 1. Send availability text
+### 1. Start with an unknown phone number
+
+From a phone number that does not already exist in `users.phone_number`, send:
+
+```text
+Hi, I want to train with Maya and evenings usually work best.
+```
+
+Expected result:
+
+- the sender is not hard-rejected
+- a new `sms_intake_leads` row is created
+- the system asks the next missing onboarding question instead of offering
+  booking slots
+
+### 2. Complete intake
+
+Reply through the receptionist prompts until the app has:
+
+- trainer name
+- client name
+- email
+- useful scheduling preferences
+
+Example answers:
+
+```text
+I'm Alex Client and my email is alex@example.com.
+Tuesday or Thursday after work is probably best, but I'm flexible.
+```
+
+Expected result:
+
+- `sms_intake_leads.status = 'awaiting_trainer_approval'`
+- `sms_intake_leads.conversation_state = 'awaiting_trainer_reply'`
+- `sms_intake_leads.requested_trainer_id` is populated
+- `sms_intake_leads.scheduling_preferences_text` and
+  `sms_intake_leads.scheduling_preferences_json` are both populated
+
+### 3. Verify the trainer approval SMS
+
+Expected result:
+
+- the trainer receives a summary SMS with a short request code
+- the trainer-facing SMS includes:
+  - `APPROVE <code>`
+  - `REJECT <code>`
+- a `sms_trainer_approval_requests` row exists with:
+  - `status = 'pending'`
+  - the same request code shown in the trainer SMS
+
+### 4. Approve from the trainer phone
+
+From the real trainer phone, reply:
+
+```text
+APPROVE <code>
+```
+
+Expected result:
+
+- the trainer receives a confirmation SMS
+- the client receives a setup-success SMS
+- `sms_trainer_approval_requests.status = 'approved'`
+- the lead is promoted into real `users` and `clients` rows
+
+### 5. Verify client promotion
+
+Check:
+
+- `sms_intake_leads.approved_user_id`
+- `sms_intake_leads.approved_client_id`
+- the new `users` row
+- the new `clients` row linked to the approving trainer
+
+If promotion hits a duplicate identity conflict, expected result changes to:
+
+- `sms_intake_leads.status = 'needs_manual_review'`
+- the client receives the neutral setup-delay SMS
+- no partial extra client should remain
+
+### 6. Verify the handoff into normal scheduling
+
+After approval, continue from the same newly approved phone number.
+
+Send:
+
+```text
+Availability
+```
+
+Expected result:
+
+- the phone now routes through the normal known-client scheduling path
+- the client receives numbered slot options instead of more intake prompts
+
+### 7. Send availability text from an approved client
 
 From the mapped client phone, send:
 
@@ -80,7 +206,7 @@ Current real-world example of busy periods inside the configured weekday window:
 
 If you run the test while those remain busy, those times should not be offered.
 
-### 2. Book a slot
+### 8. Book a slot
 
 Reply with one of the offered numbers:
 
@@ -98,8 +224,10 @@ Expected result:
   - `change_type = 'created'`
   - `reason = 'Booked via SMS'`
 - the session appears on the trainer Google Calendar
+- the trainer Google Calendar event includes the client as an attendee
+- the client receives the Google invite email
 
-### 3. Verify busy-time exclusion
+### 9. Verify busy-time exclusion
 
 After the first booking lands, send:
 
@@ -116,7 +244,27 @@ If you want a stronger proof, create or keep one obvious Google Calendar event
 inside the weekday `09:00` to `17:00` window, then confirm that exact interval
 is omitted from the SMS options.
 
-### 4. Reschedule
+### 10. Verify free-text exact-time booking
+
+From the mapped client phone, send:
+
+```text
+Monday at 2
+```
+
+Expected result:
+
+- if the exact slot is open, the client receives `You're booked for ...`
+- a new `sessions` row is created for that exact requested time
+- `session_changes.reason = 'Booked via SMS'`
+- the session syncs to Google Calendar
+- the trainer Google Calendar event includes the client as an attendee
+- the client receives the Google invite email
+
+If that exact slot is not open in the current live window, the app should reply
+with up to 3 numbered alternatives instead of silently failing.
+
+### 11. Reschedule
 
 Send:
 
@@ -137,9 +285,10 @@ Expected result:
 - a `session_changes` row is created with:
   - `change_type = 'rescheduled'`
   - `reason = 'Rescheduled via SMS'`
-- the Google Calendar event moves to the new time
+- the existing Google event is updated in place
+- the client receives the Google update email
 
-### 5. Cancel
+### 12. Cancel
 
 Send:
 
@@ -156,7 +305,8 @@ Expected result:
 - the target `sessions` row is updated to:
   - `status = 'cancelled'`
   - `calendar_sync_status = 'synced'`
-- the session's Google Calendar event is removed
+- the Google event is removed
+- the client receives the Google cancellation email
 - a `session_changes` row is created with:
   - `change_type = 'cancelled'`
   - `reason = 'Cancelled via SMS'`
@@ -171,6 +321,8 @@ Check:
 - app logs for `/api/twilio/inbound`
 - `sms_webhook_idempotency`
 - `sms_messages`
+- `sms_intake_leads`
+- `sms_trainer_approval_requests`
 
 Likely causes:
 
@@ -190,6 +342,51 @@ Check:
 Likely cause:
 
 - the real test phone does not match the phone stored on the client user
+
+### If the intake lead never reaches trainer approval
+
+Check:
+
+- `sms_intake_leads.requested_trainer_id`
+- `sms_intake_leads.email`
+- `sms_intake_leads.scheduling_preferences_text`
+- `sms_intake_leads.scheduling_preferences_json`
+
+Likely causes:
+
+- the trainer name never resolved deterministically
+- the email is missing or invalid
+- the scheduling preference text stayed too vague
+
+### If the trainer approval reply does not work
+
+Check:
+
+- the trainer's `users.phone_number`
+- `sms_trainer_approval_requests.request_code`
+- `sms_trainer_approval_requests.status`
+- the matching `sms_messages` rows for the trainer phone
+
+Likely causes:
+
+- the approval SMS went to the wrong phone because trainer setup is stale
+- the trainer replied from a different phone number
+- the request code is wrong, expired, or already decided
+
+### If approval succeeds but the new client still cannot schedule
+
+Check:
+
+- `sms_intake_leads.approved_user_id`
+- `sms_intake_leads.approved_client_id`
+- the promoted `users.phone_number`
+- the promoted `clients.trainer_id`
+
+Likely causes:
+
+- promotion hit a manual-review conflict path
+- the promoted phone number was stored incorrectly
+- the client row was not linked to the trainer correctly
 
 ### If availability returns no times
 

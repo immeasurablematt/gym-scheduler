@@ -5,7 +5,7 @@ import type { Database, Json } from "@/types/supabase";
 import {
   addDaysToPlainDate,
   formatSlotLabel,
-  getCurrentPlainDateInTimeZone,
+  getPlainDateInTimeZone,
   getWeekdayForPlainDate,
   minutesToTimeParts,
   timePartsToMinutes,
@@ -42,6 +42,7 @@ type FindAvailableSmsSlotsOptions = {
   ignoredSessionIds?: string[];
   maxSlots: number;
   searchDays: number;
+  searchStartAt?: string;
   slotIntervalMinutes: number;
   timeZone: string;
   trainerAvailableHours: Json | null;
@@ -54,6 +55,7 @@ export async function findAvailableSmsSlots({
   ignoredSessionIds = [],
   maxSlots,
   searchDays,
+  searchStartAt,
   slotIntervalMinutes,
   timeZone,
   trainerAvailableHours,
@@ -61,17 +63,22 @@ export async function findAvailableSmsSlots({
 }: FindAvailableSmsSlotsOptions): Promise<AvailabilitySlot[]> {
   const supabase = createServerSupabaseClient();
   const now = new Date();
+  const requestedStart = searchStartAt ? new Date(searchStartAt) : null;
+  const baseline =
+    requestedStart && !Number.isNaN(requestedStart.getTime())
+      ? new Date(Math.max(now.getTime(), requestedStart.getTime()))
+      : now;
   const searchEnd = new Date(
-    now.getTime() + searchDays * 24 * 60 * 60 * 1000,
+    baseline.getTime() + searchDays * 24 * 60 * 60 * 1000,
   ).toISOString();
-  const nowIso = now.toISOString();
+  const searchStartIso = baseline.toISOString();
   const [templates, blockedSlots, trainerSessions, clientSessions, externalBusyIntervals] =
     await Promise.all([
       getAvailabilityTemplates(supabase, trainerId),
-      getBlockedTimeSlots(supabase, trainerId, nowIso, searchEnd),
-      getScheduledSessionsForTrainer(supabase, trainerId, nowIso, searchEnd),
-      getScheduledSessionsForClient(supabase, clientId, nowIso, searchEnd),
-      getTrainerExternalBusyIntervals(trainerId, nowIso, searchEnd),
+      getBlockedTimeSlots(supabase, trainerId, searchStartIso, searchEnd),
+      getScheduledSessionsForTrainer(supabase, trainerId, searchStartIso, searchEnd),
+      getScheduledSessionsForClient(supabase, clientId, searchStartIso, searchEnd),
+      getTrainerExternalBusyIntervals(trainerId, searchStartIso, searchEnd),
     ]);
 
   const windows = toAvailabilityWindows(templates, trainerAvailableHours);
@@ -84,7 +91,7 @@ export async function findAvailableSmsSlots({
     (session) => !ignoredSessionIds.includes(session.id),
   );
   const slots: AvailabilitySlot[] = [];
-  const today = getCurrentPlainDateInTimeZone(timeZone);
+  const today = getPlainDateInTimeZone(baseline, timeZone);
 
   for (let offset = 0; offset < searchDays; offset += 1) {
     const date = addDaysToPlainDate(today, offset);
@@ -111,7 +118,7 @@ export async function findAvailableSmsSlots({
           candidateStart.getTime() + durationMinutes * 60 * 1000,
         );
 
-        if (candidateStart <= now || candidateStart.toISOString() > searchEnd) {
+        if (candidateStart < baseline || candidateStart.toISOString() > searchEnd) {
           continue;
         }
 

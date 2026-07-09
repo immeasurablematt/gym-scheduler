@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 
 import { hasClerkServerKeys } from "@/lib/auth";
+import { assessClientInviteEligibility } from "@/lib/google/client-invite-eligibility";
 import {
   createServerSupabaseClient,
   hasSupabaseServerCredentials,
@@ -318,6 +319,15 @@ export async function createTrainerSession(
       );
     }
 
+    const clientUser = await getUserById(supabase, client.user_id);
+    const inviteEligibility = assessClientInviteEligibility(
+      clientUser?.email ?? null,
+    );
+
+    if (inviteEligibility.kind === "ineligible") {
+      throw new SessionCreateError(inviteEligibility.dashboardMessage, 400);
+    }
+
     if (input.gymSpaceId) {
       const gymSpace = await getGymSpaceById(supabase, input.gymSpaceId);
 
@@ -406,6 +416,20 @@ export async function updateTrainerSession(
 
     if (!existingSession) {
       throw new SessionUpdateError("Session not found.", 404);
+    }
+
+    const client = await getTrainerClientById(
+      supabase,
+      context.trainer.id,
+      existingSession.client_id,
+    );
+    const clientUser = client ? await getUserById(supabase, client.user_id) : null;
+    const inviteEligibility = assessClientInviteEligibility(
+      clientUser?.email ?? null,
+    );
+
+    if (inviteEligibility.kind === "ineligible" && input.status === "scheduled") {
+      throw new SessionUpdateError(inviteEligibility.dashboardMessage, 400);
     }
 
     const updates = buildSessionUpdatePayload(existingSession, input);

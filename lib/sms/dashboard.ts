@@ -107,6 +107,7 @@ async function getRecentMessages(
   const { data, error } = await supabase
     .from("sms_messages")
     .select("*")
+    .eq("audience", "client")
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -206,6 +207,7 @@ async function countSmsMessages(
   const { count, error } = await supabase
     .from("sms_messages")
     .select("id", { count: "exact", head: true })
+    .eq("audience", "client")
     .eq("direction", direction)
     .gte("created_at", sinceIso);
 
